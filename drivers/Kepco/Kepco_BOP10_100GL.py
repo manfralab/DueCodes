@@ -34,30 +34,9 @@ class Kepco_BOP10_100GL(VisaInstrument):
                            unit='A',
                            docstring="Read/Set current limit (A)")
 
-        # self.add_parameter(name='Field',
-        #                    label='B_field',
-        #                    unit='T',
-        #                    get_cmd='CURR?',
-        #                    set_cmd='CURR {}',
-        #                    vals=vals.Numbers(B_max*-1, B_max),
-        #                    get_parser=self._get_B_field,
-        #                    set_parser=self._set_B_field,
-        #                    docstring="Read/Set B-field in T")
-
         self.add_parameter(name='voltage',
                            label='output voltage',
                            unit='V',
                            get_cmd='MEAS:VOLT?',
                            get_parser=float,
                            docstring="Read output voltage (V)")
-
-     # def _get_B_field(self,s):
-     #    log.info('Get B-field (T)')
-     #    fld = float(s)/ratio
-     #    return fld # convert current(A) into B field (T)
-     #
-     #
-     # def _set_B_field(self,s):
-     #     log.info('Set B-field (T)')
-     #     cmd = round(float(s)*ratio,8)
-     #     return cmd
