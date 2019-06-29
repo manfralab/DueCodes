@@ -14,7 +14,7 @@ MAX_FIELD = 5.004 # T
 
 log = logging.getLogger(__name__)
 
-class Kepco_BOP10_100GL(Kepco_BOP10_100GL):
+class Oxford5TMagnet(Kepco_BOP10_100GL):
 
      def __init__(self, name, address, reset=False, **kwargs):
         super().__init__(self, name, address, reset=reset, **kwargs)

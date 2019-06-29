@@ -8,11 +8,6 @@ import logging
 from qcodes import VisaInstrument
 from qcodes import validators as vals
 
-#### I/B (A/T) ratio
-ratio = 12.371
-#### Maximum B-field
-B_max = 5.004
-
 log = logging.getLogger(__name__)
 
 class Kepco_BOP10_100GL(VisaInstrument):
