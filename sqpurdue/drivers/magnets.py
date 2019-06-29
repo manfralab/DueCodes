@@ -9,14 +9,17 @@ from qcodes import VisaInstrument
 from qcodes import validators as val
 from .Kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
 
-AMP_PER_TESLA = 12.371 # A/T
-MAX_FIELD = 5.004 # T
+
 
 log = logging.getLogger(__name__)
 
 class Oxford5TMagnet(Kepco_BOP10_100GL):
 
      def __init__(self, name, address, reset=False, **kwargs):
+
+         self.AMP_PER_TESLA = 12.371 # A/T
+         self.MAX_FIELD = 5.004 # T
+
         super().__init__(self, name, address, reset=reset, **kwargs)
 
         self.add_parameter(name='Field',
@@ -24,15 +27,15 @@ class Oxford5TMagnet(Kepco_BOP10_100GL):
                            unit='T',
                            get_cmd=self._get_field,
                            set_cmd=self._set_field,
-                           vals=vals.Numbers(-1*MAX_FIELD, MAX_FIELD),
+                           vals=vals.Numbers(-1*self.MAX_FIELD, self.MAX_FIELD),
                            docstring="Read/Set B-field in T")
 
      def _get_field(self):
         log.info('get field (T)')
         current = self.current.get()
-        field = current/AMP_PER_TESLA
+        field = current/self.AMP_PER_TESLA
         return field
 
      def _set_field(self,field):
          log.info('set field (T)')
-         setpoint = round(field*AMP_PER_TESLA,8)
+         setpoint = round(field*self.AMP_PER_TESLA,8)
