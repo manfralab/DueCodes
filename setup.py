@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='mmsweeps',
+    name='sqpurdue',
     version='0.1',
     description='wrappers for helping to run an experiment with QCoDeS',
     url='https://github.com/manfralab/mmsweeps',
