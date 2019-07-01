@@ -10,6 +10,8 @@ import numpy as np
 from mmplot import start_listener, listener_is_running
 from mmplot.qcodes_dataset import QCSubscriber
 
+log = logging.getLogger(__name__)
+
 def is_monotonic(a):
     return (np.all(np.diff(a) > 0) or np.all(np.diff(a) < 0))
 
