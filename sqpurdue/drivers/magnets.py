@@ -1,24 +1,27 @@
-# -*- coding: utf-8 -*-
-"""
-Driver for the Oxford 4K/5T magnet dewar sitting in the middle of B60
+'''
+Specific drivers for magnets throughout the lab. Should subclass instrument
+or use multiple instruments used as controllers and contain magnet
+calibration information as attributes
+'''
 
-This driver assumes you are using the Kepco BOP10_100GL power supply
-"""
 import logging
 from qcodes import VisaInstrument
 from qcodes import validators as val
 from .Kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
 
-
-
 log = logging.getLogger(__name__)
 
 class Oxford5TMagnet(Kepco_BOP10_100GL):
+    # -*- coding: utf-8 -*-
+    """
+    Driver for the Oxford 4K/5T magnet dewar sitting in the middle of B60.
+    This driver assumes you are using the Kepco BOP10_100GL power supply
+    """
 
      def __init__(self, name, address, reset=False, **kwargs):
 
-         self.AMP_PER_TESLA = 12.371 # A/T
-         self.MAX_FIELD = 5.004 # T
+        self.AMP_PER_TESLA = 12.371 # A/T
+        self.MAX_FIELD = 5.004 # T
 
         super().__init__(self, name, address, reset=reset, **kwargs)
 
