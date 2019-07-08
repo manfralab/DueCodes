@@ -1,3 +1,74 @@
 # StationConfiguration for Oxford dewar/4K magnet station in B60
 
 instruments:
+
+  # mdac:
+  #   driver: qcodes.instrument_drivers.QDev.QDac_channels
+  #   type: MDAC
+  #   address: 'ASRL3::INSTR'
+  #   enable_forced_reconnect: true
+
+  srs4:
+    driver: qcodes.instrument_drivers.stanford_research.SR830
+    type: SR830
+    address: 'GPIB0::4::INSTR'
+    enable_forced_reconnect: true
+
+  srs7:
+    driver: qcodes.instrument_drivers.stanford_research.SR830
+    type: SR830
+    address: 'GPIB0::7::INSTR'
+    enable_forced_reconnect: true
+
+  # keysightdmm_right:
+  #   driver: qcodes.instrument_drivers.Keysight.Keysight_34465A
+  #   type: Keysight_34465A
+  #   address: 'TCPIP0::192.168.15.110::inst0::INSTR'
+  #   enable_forced_reconnect: true
+  #
+  # k2612:
+  #   driver: qcodes.instrument_drivers.tektronix.Keithley_2600_channels
+  #   type: Keithley_2600
+  #   address: 'TCPIP0::192.168.15.114::inst0::INSTR'
+  #   enable_forced_reconnect: true
+  #
+  # magz:
+  #   driver: qcodes.instrument_drivers.american_magnetics.AMI430
+  #   type: AMI430
+  #   enable_forced_reconnect: true
+  #   address: 192.168.0.198
+  #   init:
+  #       port: 7180
+  #   parameters:
+  #     field: {monitor: true, label: Bx}
+  #     ramp_rate: {monitor: true}
+
+  #   ls:
+  #    driver: qcodes.instrument_drivers.Lakeshore.Model_372
+  #    type: Model_372
+  #    address: 'TCPIP::192.168.0.112::7777::SOCKET'
+  #    enable_forced_reconnect: true
+
+  #  SR860_2:
+  #    driver: qcodes.instrument_drivers.stanford_research.SR860
+  #    type: SR860
+  #    address: 'TCPIP0::192.168.15.120::inst0::INSTR'
+  #    enable_forced_reconnect: true
+
+  #  AWG5014:
+  #    driver: qcodes.instrument_drivers.tektronix.AWG5014
+  #    type: Tektronix_AWG5014
+  #    address: 'TCPIP0::192.168.15.107::inst0::INSTR'
+  #    enable_forced_reconnect: true
+  #
+  #  AWG5208:
+  #    driver: qcodes.instrument_drivers.tektronix.AWG5208
+  #    type: AWG5208
+  #    address: 'TCPIP0::192.168.15.118::inst0::INSTR'
+  #    enable_forced_reconnect: true
+  #
+  #  YokogawaGS200:
+  #    driver: qcodes.instrument_drivers.yokogawa.GS200
+  #    type: GS200
+  #    address: 'USB0::0x0B21::0x0039::91RB18716::INSTR'
+  #    enable_forced_reconnect: true

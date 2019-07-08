@@ -1,6 +1,6 @@
 '''
 This module contains simple sweeps for measurements
-and relies on mmplot for plotting.
+and relies on sqpplot for plotting.
 '''
 
 import time
@@ -8,8 +8,8 @@ import logging
 import qcodes as qc
 from qcodes.dataset.measurements import Measurement
 import numpy as np
-from mmplot import start_listener, listener_is_running
-from mmplot.qcodes_dataset import QCSubscriber
+from sqpplot import start_listener, listener_is_running
+from sqpplot.qcodes_dataset import QCSubscriber
 from .drivers.parameters import TimerParam
 
 log = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ def do1d(param_set, xarray, delay, *param_meas,
          send_grid=True, plot_logs=False, write_period=0.1):
 
     if not is_monotonic(xarray) and send_grid==True:
-        raise ValueError('xarray is not monotonic. This is going to break mmplot.')
+        raise ValueError('xarray is not monotonic. This is going to break SQP plot.')
 
     if not listener_is_running():
         start_listener()
@@ -110,9 +110,9 @@ def do2d(param_set1, xarray, delay1,
          *param_meas, send_grid=True, plot_logs=False, write_period=0.1):
 
     if not is_monotonic(xarray):
-        raise ValueError('xarray is not monotonic. This is going to break mmplot.')
+        raise ValueError('xarray is not monotonic. This is going to break SQP plot.')
     elif not is_monotonic(yarray):
-        raise ValueError('yarray is not monotonic. This is going to break mmplot.')
+        raise ValueError('yarray is not monotonic. This is going to break SQP plot.')
 
     if not listener_is_running():
         start_listener()
@@ -156,60 +156,60 @@ def do2d(param_set1, xarray, delay1,
 
     return ds.run_id  # convenient to have for plotting
 
-###################
-### SPECIALIZED ###
-###################
-
-def gate_leak_check(volt_set, volt_limit, volt_step, delay, curr_meas, curr_limit,
-                    plot_logs=False, write_period=0.1):
-
-    if not listener_is_running():
-        start_listener()
-
-    volt_limit = np.abs(volt_limit) # should be positive
-    volt_step = np.abs(volt_step) # same
-    curr_limit = np.abs(curr_limit) # one more
-
-    meas = Measurement()
-    meas.write_period = write_period
-
-    meas.register_parameter(volt_set)
-    volt_set.post_delay = 0
-
-    meas.register_parameter(curr_meas, setpoints=(volt_set,))
-
-    with meas.run() as ds:
-
-        plot_subscriber = QCSubscriber(ds.dataset, volt_set, curr_meas,
-                                       grid=None, log=plot_logs)
-        ds.dataset.subscribe(plot_subscriber)
-
-        for vg in np.arange(0, volt_limit, volt_step):
-            volt_set.set(vg)
-            time.sleep(delay)
-            ileak = curr_meas.get()
-            ds.add_result((volt_set, vg),
-                          (curr_meas, curr_meas.get()))
-            if np.abs(ileak) > curr_limit:
-                vmax = vg-volt_step # previous step was the limit
-                break
-            else:
-                vmax = vg
-
-        for vg in np.arange(vmax, -1*volt_limit, -1*volt_step):
-            volt_set.set(vg)
-            time.sleep(delay)
-            ileak = curr_meas.get()
-            ds.add_result((volt_set, vg),
-                          (curr_meas, curr_meas.get()))
-            if np.abs(ileak) > curr_limit:
-                vmin = vg+volt_step # previous step was the limit
-                break
-            else:
-                vmin = vg
-
-        time.sleep(write_period) # let final data points propogate to plot
-
-    volt_set.set(0.0)
-
-    return vmin, vmax # convenient to have for plotting
+# ###################
+# ### SPECIALIZED ###
+# ###################
+#
+# def gate_leak_check(volt_set, volt_limit, volt_step, delay, curr_meas, curr_limit,
+#                     plot_logs=False, write_period=0.1):
+#
+#     if not listener_is_running():
+#         start_listener()
+#
+#     volt_limit = np.abs(volt_limit) # should be positive
+#     volt_step = np.abs(volt_step) # same
+#     curr_limit = np.abs(curr_limit) # one more
+#
+#     meas = Measurement()
+#     meas.write_period = write_period
+#
+#     meas.register_parameter(volt_set)
+#     volt_set.post_delay = 0
+#
+#     meas.register_parameter(curr_meas, setpoints=(volt_set,))
+#
+#     with meas.run() as ds:
+#
+#         plot_subscriber = QCSubscriber(ds.dataset, volt_set, curr_meas,
+#                                        grid=None, log=plot_logs)
+#         ds.dataset.subscribe(plot_subscriber)
+#
+#         for vg in np.arange(0, volt_limit, volt_step):
+#             volt_set.set(vg)
+#             time.sleep(delay)
+#             ileak = curr_meas.get()
+#             ds.add_result((volt_set, vg),
+#                           (curr_meas, curr_meas.get()))
+#             if np.abs(ileak) > curr_limit:
+#                 vmax = vg-volt_step # previous step was the limit
+#                 break
+#             else:
+#                 vmax = vg
+#
+#         for vg in np.arange(vmax, -1*volt_limit, -1*volt_step):
+#             volt_set.set(vg)
+#             time.sleep(delay)
+#             ileak = curr_meas.get()
+#             ds.add_result((volt_set, vg),
+#                           (curr_meas, curr_meas.get()))
+#             if np.abs(ileak) > curr_limit:
+#                 vmin = vg+volt_step # previous step was the limit
+#                 break
+#             else:
+#                 vmin = vg
+#
+#         time.sleep(write_period) # let final data points propogate to plot
+#
+#     volt_set.set(0.0)
+#
+#     return vmin, vmax # convenient to have for plotting
