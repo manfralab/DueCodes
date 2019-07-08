@@ -1,2 +1,2 @@
-# mmsweeps
-qcodes measurement scripts and instrument drivers
+# sqpurdue
+qcodes measurement scripts and instrument drivers at Station Q Purdue

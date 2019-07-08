@@ -4,51 +4,64 @@ and relies on mmplot for plotting.
 '''
 
 import time
+import logging
 import qcodes as qc
 from qcodes.dataset.measurements import Measurement
 import numpy as np
 from mmplot import start_listener, listener_is_running
 from mmplot.qcodes_dataset import QCSubscriber
+from .drivers.parameters import TimerParam
 
 log = logging.getLogger(__name__)
 
 def is_monotonic(a):
     return (np.all(np.diff(a) > 0) or np.all(np.diff(a) < 0))
 
-class CounterParam(qc.Parameter):
-    def __init__(self, name):
-        # only name is required
-        super().__init__(name, label='Times this has been read',
-                         vals=qc.validators.Ints(min_value=0),
-                         docstring='counts how many times get has been called '
-                                   'but can be reset to any integer >= 0 by set')
-        self._count = 0
 
-    def get_raw(self):
-        out = self._count
-        self._count += 1
-        return out
+############
+### TIME ###
+############
 
-    def set_raw(self, val):
-        self._count = val
+def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.10):
+    meas = Measurement()
+    meas.write_period = write_period
 
-class TimerParam(qc.Parameter):
-    def __init__(self, name):
-        # only name is required
-        super().__init__(name, label='time elapsed since __init__() or reset()',
-                         docstring='number of seconds elapsed from the \
-                                    last call to TimerParam.__init__ or \
-                                    TimerParam.reset()')
+    timer = TimerParam('time')
+    meas.register_parameter(timer)
 
-        self.tstart = time.time()
+    output = []
+    for pm in param_meas:
+        meas.register_parameter(pm, setpoints=(timer,))
+        output.append([pm, None])
 
-    def get_raw(self):
-        return time.time() - self.tstart
+    with meas.run() as ds:
+
+        plot_subscriber = QCSubscriber(ds.dataset, param_set, param_meas,
+                                       grid=None, log=plot_logs)
+        ds.dataset.subscribe(plot_subscriber)
+
+        while True:
+            time.sleep(delay)
+            t = timer.get()
+            for i, parameter in enumerate(param_meas):
+                output[i][1] = parameter.get()
+
+            ds.add_result((timer, t),
+                                 *output)
+            if(t>timeout):
+                break
+        time.sleep(write_period) # let final data points propogate to plot
+
+    return ds.run_id  # convenient to have for plotting
+
+############
+### doND ###
+############
 
 def do1d(param_set, xarray, delay, *param_meas,
          send_grid=True, plot_logs=False, write_period=0.1):
 
-    if not is_monotonic(xarray):
+    if not is_monotonic(xarray) and send_grid==True:
         raise ValueError('xarray is not monotonic. This is going to break mmplot.')
 
     if not listener_is_running():
@@ -75,6 +88,9 @@ def do1d(param_set, xarray, delay, *param_meas,
         plot_subscriber = QCSubscriber(ds.dataset, param_set, param_meas,
                                        grid=grid, log=plot_logs)
         ds.dataset.subscribe(plot_subscriber)
+
+        param_set.set(xarray[0])
+        time.sleep(0.5)
 
         for x in xarray:
             param_set.set(x)
@@ -139,3 +155,61 @@ def do2d(param_set1, xarray, delay1,
         time.sleep(write_period) # let final data points propogate to plot
 
     return ds.run_id  # convenient to have for plotting
+
+###################
+### SPECIALIZED ###
+###################
+
+def gate_leak_check(volt_set, volt_limit, volt_step, delay, curr_meas, curr_limit,
+                    plot_logs=False, write_period=0.1):
+
+    if not listener_is_running():
+        start_listener()
+
+    volt_limit = np.abs(volt_limit) # should be positive
+    volt_step = np.abs(volt_step) # same
+    curr_limit = np.abs(curr_limit) # one more
+
+    meas = Measurement()
+    meas.write_period = write_period
+
+    meas.register_parameter(volt_set)
+    volt_set.post_delay = 0
+
+    meas.register_parameter(curr_meas, setpoints=(volt_set,))
+
+    with meas.run() as ds:
+
+        plot_subscriber = QCSubscriber(ds.dataset, volt_set, curr_meas,
+                                       grid=None, log=plot_logs)
+        ds.dataset.subscribe(plot_subscriber)
+
+        for vg in np.arange(0, volt_limit, volt_step):
+            volt_set.set(vg)
+            time.sleep(delay)
+            ileak = curr_meas.get()
+            ds.add_result((volt_set, vg),
+                          (curr_meas, curr_meas.get()))
+            if np.abs(ileak) > curr_limit:
+                vmax = vg-volt_step # previous step was the limit
+                break
+            else:
+                vmax = vg
+
+        for vg in np.arange(vmax, -1*volt_limit, -1*volt_step):
+            volt_set.set(vg)
+            time.sleep(delay)
+            ileak = curr_meas.get()
+            ds.add_result((volt_set, vg),
+                          (curr_meas, curr_meas.get()))
+            if np.abs(ileak) > curr_limit:
+                vmin = vg+volt_step # previous step was the limit
+                break
+            else:
+                vmin = vg
+
+        time.sleep(write_period) # let final data points propogate to plot
+
+    volt_set.set(0.0)
+
+    return vmin, vmax # convenient to have for plotting
