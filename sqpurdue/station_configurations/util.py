@@ -17,3 +17,11 @@ def get_config_path(system_name):
         return str(config_path)
     else:
         raise ValueError(f'{system_name} is not a recognized system name.')
+
+def clear_station_instruments(st):
+    conn_instr = [instr for instr in st.components if not instr=='config']
+    for inst in conn_instr:
+        try:
+            st.close_and_remove_instrument(inst)
+        except Exception as e:
+            print(e)
