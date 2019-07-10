@@ -10,7 +10,7 @@ from qcodes.dataset.measurements import Measurement
 import numpy as np
 from shockplot import start_listener, listener_is_running
 from shockplot.qcodes_dataset import QCSubscriber
-from .drivers.parameters import TimerParam
+from .drivers.parameters import TimerParam, CounterParam
 
 log = logging.getLogger(__name__)
 
@@ -105,12 +105,112 @@ def do1d(param_set, xarray, delay, *param_meas,
 
     return ds.run_id  # convenient to have for plotting
 
-# do1d repeat
-
 # do1d repeat 1 way
+def do1d_repeat_oneway(param_setx, xarray, delayx, num_repeats, delayy, *param_meas,
+                       send_grid=True, plot_logs=False, write_period=0.1):
 
-def do2d(param_set1, xarray, delay1,
-         param_set2, yarray, delay2,
+    if not is_monotonic(xarray):
+        raise ValueError('xarray is not monotonic. This is going to break SQP plot.')
+
+    if not listener_is_running():
+        start_listener()
+
+    meas = Measurement()
+    meas.write_period = write_period
+
+    meas.register_parameter(param_setx)
+    param_setx.post_delay = 0
+    param_county = CounterParam('repeat')
+    meas.register_parameter(param_county)
+
+    output = []
+    for parameter in param_meas:
+        meas.register_parameter(parameter, setpoints=(param_setx, param_county))
+        output.append([parameter, None])
+
+    with meas.run() as ds:
+
+        if send_grid:
+            grid = [xarray, np.arange(num_repeats)]
+        else:
+            grid = None
+
+        plot_subscriber = QCSubscriber(ds.dataset, [param_setx, param_county], param_meas,
+                                           grid=grid, log=plot_logs)
+        ds.dataset.subscribe(plot_subscriber)
+
+        for i in range(num_repeats):
+
+            y = param_county.get()
+            time.sleep(delayy)
+            for x in xarray:
+                param_setx.set(x)
+                time.sleep(delayx)
+                for i, parameter in enumerate(param_meas):
+                    output[i][1] = parameter.get()
+                ds.add_result((param_setx, x),
+                              (param_county, y),
+                              *output)
+        time.sleep(write_period) # let final data points propogate to plot
+
+    return ds.run_id  # convenient to have for plotting
+
+def do1d_repeat_twoway(param_setx, xarray, delayx, num_repeats, delayy, *param_meas,
+                       send_grid=True, plot_logs=False, write_period=0.1):
+
+    if not is_monotonic(xarray):
+        raise ValueError('xarray is not monotonic. This is going to break SQP plot.')
+
+    if not listener_is_running():
+        start_listener()
+
+    meas = Measurement()
+    meas.write_period = write_period
+
+    meas.register_parameter(param_setx)
+    param_setx.post_delay = 0
+    param_county = CounterParam('repeat')
+    meas.register_parameter(param_county)
+
+    output = []
+    for parameter in param_meas:
+        meas.register_parameter(parameter, setpoints=(param_setx, param_county))
+        output.append([parameter, None])
+
+    with meas.run() as ds:
+
+        if send_grid:
+            grid = [xarray, np.arange(num_repeats)]
+        else:
+            grid = None
+
+        plot_subscriber = QCSubscriber(ds.dataset, [param_setx, param_county], param_meas,
+                                           grid=grid, log=plot_logs)
+        ds.dataset.subscribe(plot_subscriber)
+
+        for i in range(num_repeats):
+
+            y = param_county.get()
+            time.sleep(delayy)
+            if y%2==0:
+                xsetpoints = xarray
+            else:
+                xsetpoints = xarray[::-1]
+
+            for x in xsetpoints:
+                param_setx.set(x)
+                time.sleep(delayx)
+                for i, parameter in enumerate(param_meas):
+                    output[i][1] = parameter.get()
+                ds.add_result((param_setx, x),
+                              (param_county, y),
+                              *output)
+        time.sleep(write_period) # let final data points propogate to plot
+
+    return ds.run_id  # convenient to have for plotting
+
+def do2d(param_setx, xarray, delayx,
+         param_sety, yarray, delayy,
          *param_meas, send_grid=True, plot_logs=False, write_period=0.1):
 
     if not is_monotonic(xarray):
@@ -124,14 +224,14 @@ def do2d(param_set1, xarray, delay1,
     meas = Measurement()
     meas.write_period = write_period
 
-    meas.register_parameter(param_set1)
-    param_set1.post_delay = 0
-    meas.register_parameter(param_set2)
-    param_set2.post_delay = 0
+    meas.register_parameter(param_setx)
+    param_setx.post_delay = 0
+    meas.register_parameter(param_sety)
+    param_sety.post_delay = 0
 
     output = []
     for parameter in param_meas:
-        meas.register_parameter(parameter, setpoints=(param_set1,param_set2))
+        meas.register_parameter(parameter, setpoints=(param_setx, param_sety))
         output.append([parameter, None])
 
     with meas.run() as ds:
@@ -141,21 +241,22 @@ def do2d(param_set1, xarray, delay1,
         else:
             grid = None
 
-        plot_subscriber = QCSubscriber(ds.dataset, [param_set1, param_set2], param_meas,
+        plot_subscriber = QCSubscriber(ds.dataset, [param_setx, param_sety], param_meas,
                                            grid=grid, log=plot_logs)
         ds.dataset.subscribe(plot_subscriber)
 
         for y in yarray:
-            param_set2.set(y)
-            time.sleep(delay2)
+            param_sety.set(y)
+            time.sleep(delayy)
             for x in xarray:
                 param_set1.set(x)
-                time.sleep(delay1)
+                time.sleep(delayx)
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
-                ds.add_result((param_set1, x),
-                              (param_set2, y),
+                ds.add_result((param_setx, x),
+                              (param_sety, y),
                               *output)
+
         time.sleep(write_period) # let final data points propogate to plot
 
     return ds.run_id  # convenient to have for plotting

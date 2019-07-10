@@ -5,6 +5,7 @@ class CounterParam(qc.Parameter):
     def __init__(self, name):
         # only name is required
         super().__init__(name, label='Times this has been read',
+                         unit='int',
                          vals=qc.validators.Ints(min_value=0),
                          docstring='counts how many times get has been called '
                                    'but can be reset to any integer >= 0 by set')
