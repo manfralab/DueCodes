@@ -3,7 +3,7 @@
 instruments:
 
   mdac:
-    driver: mdac.stationq_package.Driver.extMDAC
+    driver: shockley.drivers.MDAC.extMDAC
     type: MDAC
     address: 'ASRL3::INSTR'
     init:

@@ -8,8 +8,8 @@ import logging
 import qcodes as qc
 from qcodes.dataset.measurements import Measurement
 import numpy as np
-from sqpplot import start_listener, listener_is_running
-from sqpplot.qcodes_dataset import QCSubscriber
+from shockplot import start_listener, listener_is_running
+from shockplot.qcodes_dataset import QCSubscriber
 from .drivers.parameters import TimerParam
 
 log = logging.getLogger(__name__)
