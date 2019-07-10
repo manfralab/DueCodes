@@ -8,7 +8,7 @@ yaml_lookup = {
     '4K magnet': 'oxford_4K_magnet_station.yaml',
 }
 
-def get_config_path(system_name):
+def get_station_config_path(system_name):
     ''' load config path by system name '''
 
     if system_name in yaml_lookup:
@@ -18,10 +18,10 @@ def get_config_path(system_name):
     else:
         raise ValueError(f'{system_name} is not a recognized system name.')
 
-def clear_station_instruments(st):
-    conn_instr = [instr for instr in st.components if not instr=='config']
+def clear_station_instruments(station):
+    conn_instr = [instr for instr in station.components if not instr=='config']
     for inst in conn_instr:
         try:
-            st.close_and_remove_instrument(inst)
+            station.close_and_remove_instrument(inst)
         except Exception as e:
             print(e)
