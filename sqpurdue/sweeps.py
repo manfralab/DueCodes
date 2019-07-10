@@ -36,7 +36,7 @@ def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.10):
 
     with meas.run() as ds:
 
-        plot_subscriber = QCSubscriber(ds.dataset, param_set, param_meas,
+        plot_subscriber = QCSubscriber(ds.dataset, timer, param_meas,
                                        grid=None, log=plot_logs)
         ds.dataset.subscribe(plot_subscriber)
 
@@ -105,6 +105,10 @@ def do1d(param_set, xarray, delay, *param_meas,
 
     return ds.run_id  # convenient to have for plotting
 
+# do1d repeat
+
+# do1d repeat 1 way
+
 def do2d(param_set1, xarray, delay1,
          param_set2, yarray, delay2,
          *param_meas, send_grid=True, plot_logs=False, write_period=0.1):
@@ -150,8 +154,8 @@ def do2d(param_set1, xarray, delay1,
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
                 ds.add_result((param_set1, x),
-                                     (param_set2, y),
-                                     *output)
+                              (param_set2, y),
+                              *output)
         time.sleep(write_period) # let final data points propogate to plot
 
     return ds.run_id  # convenient to have for plotting
@@ -159,57 +163,80 @@ def do2d(param_set1, xarray, delay1,
 # ###################
 # ### SPECIALIZED ###
 # ###################
-#
-# def gate_leak_check(volt_set, volt_limit, volt_step, delay, curr_meas, curr_limit,
-#                     plot_logs=False, write_period=0.1):
-#
-#     if not listener_is_running():
-#         start_listener()
-#
-#     volt_limit = np.abs(volt_limit) # should be positive
-#     volt_step = np.abs(volt_step) # same
-#     curr_limit = np.abs(curr_limit) # one more
-#
-#     meas = Measurement()
-#     meas.write_period = write_period
-#
-#     meas.register_parameter(volt_set)
-#     volt_set.post_delay = 0
-#
-#     meas.register_parameter(curr_meas, setpoints=(volt_set,))
-#
-#     with meas.run() as ds:
-#
-#         plot_subscriber = QCSubscriber(ds.dataset, volt_set, curr_meas,
-#                                        grid=None, log=plot_logs)
-#         ds.dataset.subscribe(plot_subscriber)
-#
-#         for vg in np.arange(0, volt_limit, volt_step):
-#             volt_set.set(vg)
-#             time.sleep(delay)
-#             ileak = curr_meas.get()
-#             ds.add_result((volt_set, vg),
-#                           (curr_meas, curr_meas.get()))
-#             if np.abs(ileak) > curr_limit:
-#                 vmax = vg-volt_step # previous step was the limit
-#                 break
-#             else:
-#                 vmax = vg
-#
-#         for vg in np.arange(vmax, -1*volt_limit, -1*volt_step):
-#             volt_set.set(vg)
-#             time.sleep(delay)
-#             ileak = curr_meas.get()
-#             ds.add_result((volt_set, vg),
-#                           (curr_meas, curr_meas.get()))
-#             if np.abs(ileak) > curr_limit:
-#                 vmin = vg+volt_step # previous step was the limit
-#                 break
-#             else:
-#                 vmin = vg
-#
-#         time.sleep(write_period) # let final data points propogate to plot
-#
-#     volt_set.set(0.0)
-#
-#     return vmin, vmax # convenient to have for plotting
+
+def gate_leak_check(volt_set, volt_limit, volt_step, delay, curr_dc, dc_curr_limit,
+                    curr_ac=None, plot_logs=False, write_period=0.1):
+
+    if not listener_is_running():
+        start_listener()
+
+    volt_limit = np.abs(volt_limit) # should be positive
+    volt_step = np.abs(volt_step) # same
+    dc_curr_limit = np.abs(dc_curr_limit) # one more
+
+    meas = Measurement()
+    meas.write_period = write_period
+
+    meas.register_parameter(volt_set)
+    volt_set.post_delay = 0
+
+    if curr_ac:
+        param_meas = [curr_dc, curr_ac]
+    else:
+        param_meas = [curr_dc]
+
+    output = []
+    for parameter in param_meas:
+        meas.register_parameter(parameter, setpoints=(volt_set,))
+        output.append([parameter, None])
+
+    with meas.run() as ds:
+
+        plot_subscriber = QCSubscriber(ds.dataset, volt_set, param_meas,
+                                       grid=None, log=plot_logs)
+        ds.dataset.subscribe(plot_subscriber)
+
+        for vg in np.arange(0, volt_limit, volt_step):
+            volt_set.set(vg)
+            time.sleep(delay)
+
+            for i, parameter in enumerate(param_meas):
+                output[i][1] = parameter.get()
+            ds.add_result((volt_set, vg),
+                          *output)
+
+            i_dc = output[0][1]
+            if np.abs(i_dc) > dc_curr_limit:
+                vmax = vg-volt_step # previous step was the limit
+                break
+            else:
+                vmax = vg
+
+        for vg in np.arange(vmax, -1*volt_limit, -1*volt_step):
+            volt_set.set(vg)
+            time.sleep(delay)
+
+            for i, parameter in enumerate(param_meas):
+                output[i][1] = parameter.get()
+            ds.add_result((volt_set, vg),
+                          *output)
+
+            i_dc = output[0][1]
+            if np.abs(i_dc) > dc_curr_limit:
+                vmin = vg+volt_step # previous step was the limit
+                break
+            else:
+                vmin = vg
+
+        for vg in np.arange(vmin, 0.0, volt_step):
+            volt_set.set(vg)
+            time.sleep(delay)
+
+            for i, parameter in enumerate(param_meas):
+                output[i][1] = parameter.get()
+            ds.add_result((volt_set, vg),
+                          *output)
+
+        time.sleep(write_period) # let final data points propogate to plot
+
+    return vmin, vmax # convenient to have for plotting

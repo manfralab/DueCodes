@@ -62,27 +62,22 @@ class CurrentParam1211(qc.Parameter):
         return value
 
 class CondParam2probe(qc.Parameter):
+    ''' return the conductance in units of 2e^2/h '''
 
-    def __init__(self, current_param, voltage_param, name='cond'):
+    def __init__(self, current_param, voltage_getter, name='cond'):
 
 
         super().__init__(name, label='ac conductance', unit='Conductance')
 
-    #     self._measured_param = measured_param
-    #     self._instrument = c_amp_ins
-    #
-    #     p_name = measured_param.name
-    #     p_label = getattr(measured_param, 'label', None)
-    #     p_unit = getattr(measured_param, 'unit', None)
-    #
-    # def get_raw(self):
-    #     volt = self._measured_param.get()
-    #     current = (self._instrument.sens.get() *
-    #                self._instrument.sens_factor.get()) * volt
-    #
-    #     if self._instrument.invert.get():
-    #         current *= -1
-    #
-    #     value = current
-    #     self._save_val(value)
-    #     return value
+        self._current_param = current_param
+        self._voltage_getter = voltage_getter # to get the voltage setpoint
+                                              # this should _not_ query the instrument
+        self.COND_QUANT =  7.748091729e-5 # Siemens
+
+    def get_raw(self):
+        volt = self._voltage_getter()
+        current = self._current_param.get()
+
+        value = current/volt/self.COND_QUANT
+        self._save_val(value)
+        return value

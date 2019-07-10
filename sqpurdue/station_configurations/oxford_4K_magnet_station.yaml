@@ -2,11 +2,13 @@
 
 instruments:
 
-  # mdac:
-  #   driver: qcodes.instrument_drivers.QDev.QDac_channels
-  #   type: MDAC
-  #   address: 'ASRL3::INSTR'
-  #   enable_forced_reconnect: true
+  mdac:
+    driver: mdac.stationq_package.Driver.extMDAC
+    type: MDAC
+    address: 'ASRL3::INSTR'
+    init:
+        name: argus
+    enable_forced_reconnect: true
 
   srs4:
     driver: qcodes.instrument_drivers.stanford_research.SR830
@@ -39,6 +41,12 @@ instruments:
     init:
         name: osiris
     enable_forced_reconnect: true
+
+  ithaco:
+    driver: qcodes.instrument_drivers.ithaco.Ithaco_1211
+    type: Ithaco_1211
+    init:
+      name: paradise
 
   # magz:
   #   driver: qcodes.instrument_drivers.american_magnetics.AMI430
