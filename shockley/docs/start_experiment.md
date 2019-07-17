@@ -5,6 +5,7 @@
 Import packages/modules/variables
 
 ```python
+# use autoreload extensions
 %load_ext autoreload
 %autoreload 2
 

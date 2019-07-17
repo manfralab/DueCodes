@@ -1,6 +1,6 @@
 # Loading data for analysis
 
-```
+```python
 %matplotlib notebook
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -14,7 +14,7 @@ from shockley import list_measured_params, get_data_from_ds
 
 Connect to database with experiment data
 
-```
+```python
 db_loc = '/path/to/experiment/database.db'
 qc.config['core']['db_location'] = db_loc
 ```
