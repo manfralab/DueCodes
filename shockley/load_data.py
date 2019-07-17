@@ -141,7 +141,7 @@ def get_data_from_ds(dat, param_name, dtype='numpy'):
             plottype = get_1D_plottype(xpoints, ypoints)
 
             if plottype in ['1D_line', '1D_point', '1D_bar']:
-                return {'y': {'name':yname, 'vals': y}, 'x': {'name':xname, 'vals': x}}
+                return {'y': {'name':yname, 'vals': ypoints}, 'x': {'name':xname, 'vals': xpoints}}
 
             else:
                 raise ValueError('Unknown data shape. Something is way wrong.')
