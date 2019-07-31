@@ -22,6 +22,7 @@ def clear_station_instruments(station):
     conn_instr = [instr for instr in station.components if not instr=='config']
     for inst in conn_instr:
         try:
+            print(inst)
             station.close_and_remove_instrument(inst)
         except Exception as e:
             print(e)

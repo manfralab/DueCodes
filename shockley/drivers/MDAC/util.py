@@ -85,7 +85,7 @@ def microd_1M_ground(md, channel_list=None):
             print(ch.channel_number(), e)
 
 
-def all_microd_direct_ground(md, channel_list):
+def microd_direct_ground(md, channel_list):
     ''' ground all microD pins directly
 
         channel_list uses mdac numbering, not index'''

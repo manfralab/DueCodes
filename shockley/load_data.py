@@ -64,10 +64,6 @@ def list_measured_params(dat, print_=False):
     return out
 
 
-def add_ax_text(ax, text, loc, **kwargs):
-    ax.text(*loc, r'{0:s}'.format(text), transform=ax.transAxes, **kwargs)
-
-
 def xy_to_meshgrid(xrow, yrow):
     # stolen from qcodes.dataset.plotting
     # we use a general edge calculator,

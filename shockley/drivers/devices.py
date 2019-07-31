@@ -34,11 +34,12 @@ class Contact(MDACChannel):
             chip_num (int): pin number for this contact according to the fridge
         """
 
-        self._parent = parent
+        self._dev = parent
         self._chip_num = chip_num
-        self._mdac_channel = self._parent._pin_map[chip_num]
+        self._mdac_channel = self._dev._pin_map[chip_num]
 
-        super().__init__(self._parent._mdac, name, self._mdac_channel)
+        super().__init__(self._dev._mdac, name, self._mdac_channel)
+        self.name = name
 
     def chip_number(self):
         """ number on the chip carrier"""
@@ -92,11 +93,12 @@ class Gate(MDACChannel):
             chip_num (int): pin number for this contact according to the fridge
         """
 
-        self._parent = parent
+        self._dev = parent
         self._chip_num = chip_num
-        self._mdac_channel = self._parent._pin_map[chip_num]
+        self._mdac_channel = self._dev._pin_map[chip_num]
 
-        super().__init__(self._parent._mdac, name, self._mdac_channel)
+        super().__init__(self._dev._mdac, name, self._mdac_channel)
+        self.name = name
 
     def chip_number(self):
         """ number on the chip carrier"""
@@ -108,9 +110,9 @@ class Gate(MDACChannel):
 
 
 class FET(Instrument):
-    ''' full device class '''
+    ''' FET device class '''
 
-    def __init__(self, name, md, sources=None, drain=None, gate=None, chip_carrier=None, **kwargs):
+    def __init__(self, name, md, source=None, drain=None, gate=None, chip_carrier=None, **kwargs):
         '''
         Args:
             name (str): the name of the device
@@ -132,9 +134,9 @@ class FET(Instrument):
         super().__init__(name, **kwargs)
 
         ### check some inputs ###
-        if sources is None:
+        if source is None:
             # this is only a kwarg for readability
-            raise ValueError('define a list of source contacts')
+            raise ValueError('define a source contact')
 
         if drain is None:
             # this is only a kwarg for readability
@@ -144,17 +146,9 @@ class FET(Instrument):
             # this is only a kwarg for readability
             raise ValueError('define a gate contact')
 
-        ### create source submodules
-        allsource = ChannelList(self, "Sources", Contact,
-                                snapshotable=False)
-
-        for s in sources:
-            source = Contact(self, f'{name}_s{s:02}', s)
-            allsource.append(source)
-            self.add_submodule('s{:02}'.format(s), source)
-
-        allsource.lock()
-        self.add_submodule('sources', allsource)
+        ### create source submodule
+        g = Contact(self, f'{name}_source', source)
+        self.add_submodule('source', g)
 
         ### create gate submodule
         g = Gate(self, f'{name}_gate', gate)
@@ -162,4 +156,4 @@ class FET(Instrument):
 
         ### create drain submodule
         d = Contact(self, f'{name}_drain', drain)
-        self.add_submodule(f'drain', d)
+        self.add_submodule('drain', d)
