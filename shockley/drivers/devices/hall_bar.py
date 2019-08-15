@@ -70,7 +70,7 @@ class HallBar_2P(Instrument):
 
         ### create ohmic submodule(s)
         contacts = ChannelList(self, "Conacts", Contact,
-                               snapshotable=False)
+                               snapshotable=True)
 
         for c in self.contacts_list:
             contact = Contact(self,'{}_c{:02}'.format(name, c), c)

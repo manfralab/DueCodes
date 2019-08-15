@@ -5,7 +5,8 @@ import numpy as np
 from qcodes.instrument.channel import InstrumentChannel, ChannelList
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import Parameter
-from qcodes.utils.helpers import NumpyJSONEncoder
+from qcodes.utils.helpers import NumpyJSONEncoder, full_class
+from qcodes.utils.validators import Ints, Bool
 
 from shockley.drivers.MDAC.extMDAC import MDACChannel
 
@@ -27,7 +28,42 @@ DIRECT_MAP = {
     41:41, 42:42, 43:43, 44:44, 45:45, 46:46, 47:47, 48:48,
 }
 
+### analysis ###
+
+COND_QUANT =  7.748091729e-5 # Siemens
+
+def _dfdx(f, x, axis = None):
+    # returns df(x)/dx
+    dx = (x - np.roll(x,1))[1:].mean()
+    return np.gradient(f,dx, axis = axis)
+
 ### channels ###
+
+class Result(InstrumentChannel):
+
+     def __init__(self, parent, name, unit):
+
+        """
+        Args:
+            parent (Instrument): The device the result is extract from
+            name (str): the name of the extracted result
+            units (str): units of the extracted result
+        """
+
+        super().__init__(parent, name)
+        self.name = name
+
+        self.add_parameter('run_id',
+                           label='Source Data Run Id',
+                           get_cmd=None,
+                           set_cmd=None,
+                           vals=Ints())
+
+        self.add_parameter('val',
+                           label=f'{name} ({unit})',
+                           get_cmd=None,
+                           set_cmd=None,
+                           unit=unit)
 
 class Contact(MDACChannel):
     ''' class for ohmic contacts '''
@@ -46,6 +82,13 @@ class Contact(MDACChannel):
 
         super().__init__(self._dev._mdac, name, self._mdac_channel)
         self.name = name
+
+        self.add_parameter('failed',
+                           label='Contact Failed',
+                           get_cmd=None,
+                           set_cmd=None,
+                           initial_value=False,
+                           vals=Bool())
 
     def chip_number(self):
         """ number on the chip carrier"""
@@ -105,6 +148,13 @@ class Gate(MDACChannel):
         super().__init__(self._dev._mdac, name, self._mdac_channel)
         self.name = name
 
+        self.add_parameter('failed',
+                           label='Gate Failed',
+                           get_cmd=None,
+                           set_cmd=None,
+                           initial_value=False,
+                           vals=Bool())
+
     def chip_number(self):
         """ number on the chip carrier"""
         return self._chip_num
@@ -113,14 +163,19 @@ class Gate(MDACChannel):
         """ DAC channel number corresponding to SMC channel numbers"""
         return self._mdac_channel
 
-### functions ###
+### load/save device classes ###
 
-def _dfdx(f, x, axis = None):
-    # returns df(x)/dx
-    dx = (x - np.roll(x,1))[1:].mean()
-    return np.gradient(f,dx, axis = axis)
+def mdac_simple_snapshot(obj):
 
-### load/save ###
+        snap = {
+            "__class__": full_class(obj)
+        }
+
+        for attr in set(obj._meta_attrs):
+            if hasattr(obj, attr):
+                snap[attr] = getattr(obj, attr)
+
+        return snap
 
 class devJSONEncoder(json.JSONEncoder):
     """
@@ -166,10 +221,14 @@ class devJSONEncoder(json.JSONEncoder):
                 're': float(obj.real),
                 'im': float(obj.imag)
             }
-
         # qcodes paramters/instruments
         elif isinstance(obj, (Instrument, Parameter)):
-            return obj.snapshot(update=False)
+
+            # special case for MDAC, because that mess takes too long...
+            if 'MDAC' in str(obj):
+                return mdac_simple_snapshot(obj)
+            else:
+                return obj.snapshot(update=False)
 
         # other/fallback
         elif hasattr(obj, '_JSONEncoder'):

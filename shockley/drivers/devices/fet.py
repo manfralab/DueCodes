@@ -10,31 +10,18 @@ import numpy as np
 from scipy.optimize import curve_fit
 from qcodes.instrument.base import Instrument
 from qcodes.dataset.measurements import Measurement
+from qcodes.utils.validators import Strings, Numbers
 
 from shockley import get_data_from_ds
 from shockley.drivers.parameters import CounterParam
-from shockley.drivers.devices.generic import _dfdx, Contact, Gate, \
-                                             LCC_MAP, DIRECT_MAP, devJSONEncoder
+from shockley.drivers.devices.generic import *
+
 from shockley.sweeps import do1d, do1d_repeat_twoway, gen_sweep_array
 
 from shockplot import start_listener, listener_is_running
 from shockplot.qcodes_dataset import QCSubscriber
 
-LCC_MAP = {
-    1:1, 2:2, 3:3, 4:4, 5:5, 6:6, 7:7, 8:8,
-    9:9, 10:10, 11:11, 12:12, 13:13, 14:14, 15:15, 16:16,
-    17:17, 18:18, 19:19, 20:20, 21:21, 22:22, 23:23, 24:24,
-    25:26, 26:27, 27:28, 28:29, 29:30, 30:31, 31:32, 32:33,
-}
-
-DIRECT_MAP = {
-    1:1, 2:2, 3:3, 4:4, 5:5, 6:6, 7:7, 8:8,
-    9:9, 10:10, 11:11, 12:12, 13:13, 14:14, 15:15, 16:16,
-    17:17, 18:18, 19:19, 20:20, 21:21, 22:22, 23:23, 24:24,
-    25:25, 26:26, 27:27, 28:28, 29:29, 30:30, 31:31, 32:32,
-    33:33, 34:34, 35:35, 36:36, 37:37, 38:38, 39:39, 40:40,
-    41:41, 42:42, 43:43, 44:44, 45:45, 46:46, 47:47, 48:48,
-}
+### analysis ###
 
 def cond_stats(v_gate, cond):
     # calculate maximum conductance and transconductance
@@ -182,6 +169,8 @@ def v_th_stats(x_data, y_data, window_length=10, y_threshold = 0.05, x_error = 1
 
     return x_off #, l_var, l_var_streak
 
+### device class ###
+
 class FET(Instrument):
     ''' FET device class '''
 
@@ -211,8 +200,6 @@ class FET(Instrument):
             self._volt.step = 0.005
             self._volt.inter_delay = 0.01
 
-        self.COND_QUANT =  7.748091729e-5 # Siemens
-
         if chip_carrier is None:
             self._pin_map = DIRECT_MAP
         elif chip_carrier=='lcc':
@@ -225,60 +212,130 @@ class FET(Instrument):
 
         super().__init__(name, **kwargs)
 
-        ### check some inputs ###
+        ### Source/Drain/Gate setup ###
         if source is None:
-            # this is only a kwarg for readability
             raise ValueError('define a source contact')
+        else:
+            self.add_parameter('source_pin',
+                            label='Source Pin',
+                            set_cmd=None,
+                            initial_value=source)
 
         if drain is None:
-            # this is only a kwarg for readability
             raise ValueError('define a drain contact')
-
+        else:
+            self.add_parameter('drain_pins',
+                            set_cmd=None,
+                            label='Drain Pins',
+                            initial_value=drain)
         if gate is None:
-            # this is only a kwarg for readability
             raise ValueError('define a gate contact')
+        else:
+            self.add_parameter('gate_pin',
+                            label='Gate Pin',
+                            set_cmd=None,
+                            initial_value=gate)
 
-        ### create source submodule
-        s = Contact(self, f'{name}_source', source)
+        # create source submodule
+        s = Contact(self, f'source', source)
         self.add_submodule('source', s)
-
-        ### create gate submodule
-        g = Gate(self, f'{name}_gate', gate)
-        self.add_submodule('gate', g)
-
-        ### create drain submodule
-        d = Contact(self, f'{name}_drain', drain)
-        self.add_submodule('drain', d)
-
-        self.failed = False
-
-        self.V_open = 3.0 # V
-        self.gate_leak_thresh = 400e-12 # A
-        self.r_limit = 2e6 # enough to distingush from leakage current @ 1mV bias
-        self.hysteresis_swing = [0.5, 1.0, 1.5]
-
-        self.gate.voltage.step = 0.005
-        self.gate.voltage.inter_delay = 0.01
-        self.gate._set_limits(minlimit=-5.0, maxlimit=5.0, ratelimit=5.0)
-        self.gate_min = None
-        self.gate_max = None
-        self.gate_step_coarse = 0.02 # V
-        self.gate_step_fine = 0.001 # V
-        self.gate_delay = 0.05
-
         self.source.voltage.step = 0.005
         self.source.voltage.inter_delay = 0.01
         self.source._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
         self.source_bias = 1e-3 # V
 
+        # create gate submodule
+        g = Gate(self, f'gate', gate)
+        self.add_submodule('gate', g)
+        self.gate.voltage.step = 0.005
+        self.gate.voltage.inter_delay = 0.01
+        self.gate._set_limits(minlimit=-5.0, maxlimit=5.0, ratelimit=5.0)
+        self.gate_step_coarse = 0.02 # V
+        self.gate_step_fine = 0.001 # V
+        self.gate_delay = 0.05
+
+        # create drain submodule
+        d = Contact(self, f'drain', drain)
+        self.add_submodule('drain', d)
         self.drain.voltage.step = 0.005
         self.drain.voltage.inter_delay = 0.01
         self.drain._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
 
+        # device information
+        self.add_parameter('length',
+                        label='Design Length of FET channel',
+                        set_cmd=None,
+                        get_cmd=None,
+                        unit='um',
+                        vals=Numbers())
+        self.add_parameter('width',
+                        label='Design Width of SAG structure',
+                        unit='nm',
+                        set_cmd=None,
+                        get_cmd=None,
+                        vals=Numbers())
+        self.add_parameter('structure',
+                        label='SAG Structure',
+                        set_cmd=None,
+                        get_cmd=None,
+                        vals=Strings())
+
+        # track history
         self.gate_leak_runid = []
         self.pinchoff_runid = []
         self.ss_runid = []
         self.hysteresis_runid = []
+
+        self.add_parameter('leakage_threshold',
+                        label='Gate Leakage Threshold',
+                        unit='A',
+                        set_cmd=None,
+                        initial_value=400e-12)
+        self.add_parameter('resistance_threshold',
+                        label='Resistance Threshold',
+                        unit='Ohm',
+                        set_cmd=None,
+                        initial_value=2e6)
+        self.add_parameter('hysteresis_Vswing',
+                        set_cmd=None,
+                        label='Voltage Swings for Hysterises Measurments',
+                        unit='V',
+                        initial_value=(0.5,1,1.5))
+        self.add_parameter('V_open',
+                        label='Gate Open Voltage',
+                        unit='V',
+                        set_cmd=None,
+                        initial_value=3)
+        self.add_parameter('V_bias',
+                        label='Bias Voltage',
+                        unit='V',
+                        set_cmd=None,
+                        initial_value=0.001)
+
+        # create results submodule(s)
+        results_names = ['gate_min', 'gate_max', 'R_open',
+                        'Gm', 'Gm_std', 'V_th_fit', 'V_th_fit_std',
+                        'I_sat', 'I_sat_std', 'trans_cond_R2',
+                        'G_max', 'dGdV_max', 'V_th_stat',
+                        'sub_threshold_swing', 'sub_threshold_swing_R2' ] + \
+                        ['hysteresis_'+str(int(10*sw)).zfill(3) for sw in self.hysteresis_Vswing()]
+
+        results_units = ['V', 'V', 'Ohm',
+                        'uS', 'uS', 'V', 'V',
+                        '2e^2/h', '2e^2/h/V', '',
+                        'A', 'A', 'V',
+                        'V/decade', ''] + \
+                        ['V']*len(self.hysteresis_Vswing())
+
+        results = ChannelList(self, "Results", Result,
+                              snapshotable=True)
+
+        for res_name, res_unit in zip(results_names, results_units):
+            res = Result(self, res_name, res_unit)
+            results.append(res)
+            self.add_submodule(res_name, res)
+        results.lock()
+        self.add_submodule('results', results)
 
     def connect(self, bias=0.0, gate=0.0):
 
@@ -437,7 +494,7 @@ class FET(Instrument):
                 if exit_on_vth and i>20:
                     # exit if a threshold voltage is found that is
                     # at least 0.5V from the most negative gate voltage
-                    vth = v_th_stats(xarray[0:i], current[0:i]/self.source_bias/self.COND_QUANT,
+                    vth = v_th_stats(xarray[0:i], current[0:i]/self.source_bias/COND_QUANT,
                                      window_length=20, y_threshold=0.005, x_error = 0.5)
                     if vth is not None:
                         self.failed=False
@@ -519,7 +576,7 @@ class FET(Instrument):
 
         df = get_data_from_ds(runid, self._current.name, dtype='pandas')
         v_gate = df.index.values.flatten()
-        g_sd = df.values.flatten()/self.source_bias/self.COND_QUANT
+        g_sd = df.values.flatten()/self.source_bias/COND_QUANT
 
         self.G_max, self.dGdV_max = cond_stats(v_gate, g_sd)
         self.V_th_stat = v_th_stats(v_gate, g_sd, window_length=20, y_threshold=0.01)
@@ -544,14 +601,18 @@ class FET(Instrument):
         for swing, runid in zip(self.hysteresis_swing, runids):
             dd = get_data_from_ds(runid, self._current.name, dtype='numpy')
             v_gate = dd['x']['vals']
-            g_sd = dd['z']['vals']/self.source_bias/self.COND_QUANT
+            g_sd = dd['z']['vals']/self.source_bias/COND_QUANT
 
             vth_down = v_th_stats(v_gate, g_sd[0], window_length=20, y_threshold=0.01)
             vth_up = v_th_stats(v_gate, g_sd[1], window_length=20, y_threshold=0.01)
 
-            setattr(self, 'hysteresis_' + str(int(10*swing)).zfill(3), vth_down-vth_up)
+            try:
+                setattr(self, 'hysteresis_' + str(int(10*swing)).zfill(3), vth_down-vth_up)
+            except TypeError:
+                # handles the case of one of the thresholds being None
+                setattr(self, 'hysteresis_' + str(int(10*swing)).zfill(3), None)
 
     def save(self):
-        from pprint import pprint
-        jstr = json.dumps(self.__dict__, cls = devJSONEncoder)
-        pprint( jstr )
+
+        jstr = json.dumps(self.__dict__, cls = devJSONEncoder, indent=4, sort_keys=True)
+        return jstr
