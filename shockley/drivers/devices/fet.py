@@ -10,7 +10,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 from qcodes.instrument.base import Instrument
 from qcodes.dataset.measurements import Measurement
-from qcodes.utils.validators import Strings, Numbers
+from qcodes.utils.validators import Strings, Numbers, Ints, Lists
 
 from shockley import get_data_from_ds
 from shockley.drivers.parameters import CounterParam
@@ -171,11 +171,14 @@ def v_th_stats(x_data, y_data, window_length=10, y_threshold = 0.05, x_error = 1
 
 ### device class ###
 
-class FET(Instrument):
+class SingleFET(Instrument):
+    ### TO DO:
+    # subclass this into a 4 wire device with shared drain... somehow
+
     ''' FET device class '''
 
-    def __init__(self, name, md, smu_curr, source=None, drain=None, gate=None,
-                 smu_volt=None, chip_carrier=None,  pickle_path='./_pickle_jar', **kwargs):
+    def __init__(self, name, source=None, drain=None, gate=None,
+                 chip_carrier=None,  pickle_path='./_pickle_jar', **kwargs):
         '''
         This assumes I have an SMU connected to the bus of the MDAC
         and the cryostat is directly connected to the MDAC microd connections.
@@ -193,12 +196,11 @@ class FET(Instrument):
             **kwargs are passed to qcodes.instrument.base.Instrument
         '''
 
-        self._mdac = md
-        self._current = smu_curr
-        self._volt = smu_volt
-        if self._volt is not None:
-            self._volt.step = 0.005
-            self._volt.inter_delay = 0.01
+        # make sure the instrument and measurement attributes
+        # exist but are None unless added explicitly
+        self._mdac = None
+        self._current = None
+        self._volt = None
 
         if chip_carrier is None:
             self._pin_map = DIRECT_MAP
@@ -216,50 +218,30 @@ class FET(Instrument):
         if source is None:
             raise ValueError('define a source contact')
         else:
+            s = DummyChan(self, f'source', source)
+            self.add_submodule('source', s)
             self.add_parameter('source_pin',
                             label='Source Pin',
                             set_cmd=None,
                             initial_value=source)
-
         if drain is None:
             raise ValueError('define a drain contact')
         else:
-            self.add_parameter('drain_pins',
+            d = DummyChan(self, f'drain', drain)
+            self.add_submodule('drain', d)
+            self.add_parameter('drain_pin',
                             set_cmd=None,
-                            label='Drain Pins',
+                            label='Drain Pin',
                             initial_value=drain)
         if gate is None:
             raise ValueError('define a gate contact')
         else:
+            g = DummyChan(self, f'gate', gate)
+            self.add_submodule('gate', g)
             self.add_parameter('gate_pin',
                             label='Gate Pin',
                             set_cmd=None,
                             initial_value=gate)
-
-        # create source submodule
-        s = Contact(self, f'source', source)
-        self.add_submodule('source', s)
-        self.source.voltage.step = 0.005
-        self.source.voltage.inter_delay = 0.01
-        self.source._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
-        self.source_bias = 1e-3 # V
-
-        # create gate submodule
-        g = Gate(self, f'gate', gate)
-        self.add_submodule('gate', g)
-        self.gate.voltage.step = 0.005
-        self.gate.voltage.inter_delay = 0.01
-        self.gate._set_limits(minlimit=-5.0, maxlimit=5.0, ratelimit=5.0)
-        self.gate_step_coarse = 0.02 # V
-        self.gate_step_fine = 0.001 # V
-        self.gate_delay = 0.05
-
-        # create drain submodule
-        d = Contact(self, f'drain', drain)
-        self.add_submodule('drain', d)
-        self.drain.voltage.step = 0.005
-        self.drain.voltage.inter_delay = 0.01
-        self.drain._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
 
         # device information
         self.add_parameter('length',
@@ -286,6 +268,7 @@ class FET(Instrument):
         self.ss_runid = []
         self.hysteresis_runid = []
 
+        # parameters to define measurements
         self.add_parameter('leakage_threshold',
                         label='Gate Leakage Threshold',
                         unit='A',
@@ -327,41 +310,85 @@ class FET(Instrument):
                         'V/decade', ''] + \
                         ['V']*len(self.hysteresis_Vswing())
 
-        results = ChannelList(self, "Results", Result,
-                              snapshotable=True)
-
         for res_name, res_unit in zip(results_names, results_units):
             res = Result(self, res_name, res_unit)
-            results.append(res)
             self.add_submodule(res_name, res)
-        results.lock()
-        self.add_submodule('results', results)
 
-    def connect(self, bias=0.0, gate=0.0):
 
+    def add_instruments(self, mdac=None, smu_curr=None, smu_volt=None):
+        ''' add instruments to make measurements. this is optional if you are
+            only loading the device for analysis. '''
+
+        if (mdac is None) or (smu_curr is None):
+            print('[WARNING]: instruments not loaded. provide MDAC and SMU_CURR.')
+            return None
+
+        self._mdac = mdac
+        self._current = smu_curr
+        self._volt = smu_volt
+        if self._volt is not None:
+            self._volt.step = 0.005
+            self._volt.inter_delay = 0.01
+
+        # overwrite dummy source submodule
+        s = Contact(self, f'source', self.source_pin())
+        del self.submodules['source']
+        self.add_submodule('source', s)
+        self.source.voltage.step = 0.005
+        self.source.voltage.inter_delay = 0.01
+        self.source._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
+
+        # overwrite dummy gate submodule
+        g = Gate(self, f'gate', self.gate_pin())
+        del self.submodules['gate']
+        self.add_submodule('gate', g)
+        self.gate.voltage.step = 0.005
+        self.gate.voltage.inter_delay = 0.01
+        self.gate._set_limits(minlimit=-5.0, maxlimit=5.0, ratelimit=5.0)
+        self.gate_step_coarse = 0.02 # V
+        self.gate_step_fine = 0.001 # V
+        self.gate_delay = 0.05
+
+        # overwrite dummy drain submodule
+        d = Contact(self, f'drain', self.drain_pin())
+        del self.submodules['drain']
+        self.add_submodule('drain', d)
+        self.drain.voltage.step = 0.005
+        self.drain.voltage.inter_delay = 0.01
+        self.drain._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
+
+    def connect(self):
+
+        self.drain.voltage(0.0)
         self.drain.microd_to_bus()
+
+        self.source.voltage(0.0)
         self.source.microd_to_dac()
+
         self.gate.microd_to_dac()
 
     def disconnect(self):
 
-        self.drain.voltage(0.0)
-        self.source.voltage(0.0)
+        if self.gate.failed():
+            self.gate.voltage(0.0)
+            self.gate.terminate()
 
-        self.drain.microd_float()
-        self.source.microd_float()
+            self.drain.voltage(0.0)
+            self.drain.microd_float()
 
-    def meas_gate_leak(self, compliance=2e-9, plot_logs=False, write_period=0.1):
+            self.source.voltage(0.0)
+            self.source.microd_float()
+        else:
+            self.drain.voltage(0.0)
+            self.drain.terminate()
+
+            self.source.voltage(0.0)
+            self.source.microd_float()
+
+    def meas_gate_leak(self):
 
         if not listener_is_running():
             start_listener()
-
-        volt_limit = self.gate._get_maxlimit()
-        volt_step = self.gate_step_coarse
-        curr_limit = self.gate_leak_thresh
-
-        meas = Measurement()
-        meas.write_period = write_period
 
         if self._volt:
             volt_set = self._volt
@@ -374,69 +401,31 @@ class FET(Instrument):
             self.drain.microd_to_bus()
             self.gate.microd_to_dac()
 
-        meas.register_parameter(volt_set)
-        volt_set.post_delay = 0
+        run_id, vmax = _meas_gate_leak(volt_set, self._current, self.gate_step_coarse,
+                                       self.gate._get_maxlimit(), self.gate_delay,
+                                       di_limit=self.gate_leak_thresh, compliance=2e-9)
 
-        meas.register_parameter(self._current, setpoints=(volt_set,))
+        # record results
+        self.gate_leak_runid.append(run_id)
+        self.gate_min.val(min(-1*vmax, -1*self.gate_step_coarse))
+        self.gate_min.run_id(run_id)
+        self.gate_max.val(max(vmax, self.gate_step_coarse))
+        self.gate_max.run_id(run_id)
 
-        with meas.run() as ds:
+        # adjust limits
+        self.V_open(min(self.gate_max(), self.V_open()))
+        self.gate._set_limits(minlimit=self.gate_min, maxlimit=self.gate_max)
 
-            plot_subscriber = QCSubscriber(ds.dataset, volt_set, [self._current],
-                                           grid=None, log=plot_logs)
-            ds.dataset.subscribe(plot_subscriber)
+        if vmax < 0.5:
+            self.gate.failed(True)
 
-            curr = np.array([])
-            for vg in gen_sweep_array(0, volt_limit+volt_step, step=volt_step):
-
-                volt_set.set(vg)
-                time.sleep(self.gate_delay)
-
-                curr = np.append(curr, self._current.get())
-                ds.add_result((volt_set, vg),
-                              (self._current, curr[-1]))
-
-                if vg>0:
-                    if np.abs(curr.max() - curr.min()) > curr_limit:
-                        print('Leakage current limit exceeded!')
-                        vmax = vg-volt_step # previous step was the limit
-                        break
-                    elif np.abs(curr[-1])>compliance:
-                        print('Current compliance level exceeded!')
-                        vmax = vg-volt_step # previous step was the limit
-                        break
-            else:
-                vmax = volt_limit
-
-            for vg in gen_sweep_array(vmax, 0, step=volt_step):
-
-                volt_set.set(vg)
-                time.sleep(self.gate_delay)
-
-                curr = np.append(curr, self._current.get())
-                ds.add_result((volt_set, vg),
-                              (self._current, curr[-1]))
-
-            self.gate_min = min(-1*vmax, -1*self.gate_step_coarse)
-            self.gate_max = max(vmax, self.gate_step_coarse)
-            self.gate._set_limits(minlimit=self.gate_min, maxlimit=self.gate_max)
-            self.V_open = min(self.gate_max, self.V_open)
-            self.gate_leak_runid.append(ds.run_id)
-
-            if vmax < 0.5:
-                self.failed  = True
-            else:
-                self.failed = False
-
-        return self.gate_min, self.gate_max
+        return run_id
 
     def meas_connectivity(self):
         ''' test pairs of contacts to see what is connected '''
 
-        self.gate.microd_to_dac()
-        self.gate.voltage(self.V_open)
-
-        self.drain.microd_to_bus()
-        self.source.microd_to_dac()
+        self.connect()
+        self.gate.voltage(self.V_open())
 
         xarray = gen_sweep_array(-0.025, 0.025, num=251)
         runid = do1d(self.source.voltage, xarray, 0.05, self._current)
@@ -447,10 +436,11 @@ class FET(Instrument):
         current = dd['y']['vals']
         popt = np.polyfit(bias, current, 1)
         R = 1/popt[0]
-        self.r_open = R
+        self.R_open.val(R)
 
-        if (R > self.r_limit) or (R < 0):
-            self.failed = True
+        if (R > self.resistance_threshold()) or (R < 0):
+            self.source.failed(True)
+            self.drain.failed(True)
 
     def meas_pinch_off(self, exit_on_vth = False,
                        send_grid=True, plot_logs=False, write_period=0.1):
@@ -463,10 +453,11 @@ class FET(Instrument):
         self.gate.voltage.post_delay = 0
         meas.register_parameter(self._current, setpoints=(self.gate.voltage,))
 
-        self.source.voltage(self.source_bias)
-        self.gate.voltage(self.V_open)
+        self.source.voltage(self.V_bias())
+        self.gate.voltage(self.V_open())
 
-        xarray = gen_sweep_array(self.V_open, self.gate_min-self.gate_step_coarse, step=self.gate_step_coarse)
+        xarray = gen_sweep_array(self.V_open(), self.gate_min.val()-self.gate_step_coarse,
+                                 step=self.gate_step_coarse)
         current = np.full(len(xarray), np.nan, dtype=np.float)
 
         meas.write_period = write_period
@@ -484,10 +475,10 @@ class FET(Instrument):
 
             for i,x in enumerate(xarray):
 
-                self.gate.voltage.set(x)
+                self.gate.voltage(x)
                 time.sleep(self.gate_delay)
 
-                current[i] = self._current.get()
+                current[i] = self._current()
                 ds.add_result((self.gate.voltage, x),
                               (self._current, current[i]))
 
@@ -497,28 +488,27 @@ class FET(Instrument):
                     vth = v_th_stats(xarray[0:i], current[0:i]/self.source_bias/COND_QUANT,
                                      window_length=20, y_threshold=0.005, x_error = 0.5)
                     if vth is not None:
-                        self.failed=False
                         print('Threshold voltage found. Exiting sweep.')
                         break
 
             time.sleep(write_period) # let final data points propogate to plot
             self.pinchoff_runid.append(ds.run_id)
 
-    def meas_sub_threshold(self,  send_grid=True, plot_logs=False, write_period=0.1):
+    def meas_sub_threshold(self, send_grid=True, plot_logs=False, write_period=0.1):
 
-        if hasattr(self, 'V_th_fit')==False or (self.V_th_fit is None):
+        if (self.V_th_fit.val() is None):
             print('ERROR: cannot measure subthreshold region without a value for V_th_fit.')
             return 0
 
         if not listener_is_running():
             start_listener()
 
-        self.source.voltage(self.source_bias)
-        self.gate.voltage(self.V_open)
+        self.source.voltage(self.V_bias())
+        self.gate.voltage(self.V_open())
 
-        v1 = self.V_open
-        v2 = self.V_th_fit + 0.5
-        v3 = max(self.V_th_fit - 1.0, self.gate_min)
+        v1 = self.V_open()
+        v2 = self.V_th_fit.val() + 0.5
+        v3 = max(self.V_th_fit.val() - 1.0, self.gate_min.val())
         xarray = np.concatenate((gen_sweep_array(v1, v2, step=self.gate_step_coarse),
                                  gen_sweep_array(v2-self.gate_step_fine, v3, step=self.gate_step_fine)))
 
@@ -533,18 +523,18 @@ class FET(Instrument):
             return 0
 
         runids = [None, None, None]
-        for i, swing in enumerate(self.hysteresis_swing):
+        for i, swing in enumerate(self.hysteresis_swing()):
 
-            vmax = self.V_open
-            vmin  = self.V_th_stat - swing
+            vmax = self.V_open()
+            vmin  = self.V_th_stat.val() - swing
 
-            if self.gate_min > vmin:
+            if self.gate_min.val() > vmin:
                 continue
             else:
-                self.source.voltage(self.source_bias)
-                self.gate.voltage(self.V_open)
+                self.source.voltage(self.V_bias())
+                self.gate.voltage(self.V_open())
 
-                xarray = gen_sweep_array(self.V_open, vmin-self.gate_step_coarse,
+                xarray = gen_sweep_array(self.V_open(), vmin-self.gate_step_coarse,
                                          step=self.gate_step_coarse)
 
                 runids[i] = do1d_repeat_twoway(self.gate.voltage, xarray, self.gate_delay,
@@ -562,13 +552,13 @@ class FET(Instrument):
             popt, perr, R2 = trans_cond_fit(v_gate,i_sd)
 
             # store data in device object
-            self.Gm = popt[2]*1e6 # uS
-            self.Gm_std = perr[2]*1e6 # uS
-            self.V_th_fit = popt[0] # V
-            self.V_th_fit_std = perr[0] # V
-            self.I_sat = popt[1] # A
-            self.I_sat_std = perr[1] # A
-            self.trans_cond_R2 = R2
+            self.Gm.val(popt[2]*1e6), self.Gm.run_id(runid);
+            self.Gm_std.val(perr[2]*1e6), self.Gm_std.run_id(runid);
+            self.V_th_fit.val(popt[0]), self.V_th_fit.run_id(runid);
+            self.V_th_fit_std.val(perr[0]), self.V_th_fit_std.run_id(runid);
+            self.I_sat.val(popt[1]), self.I_sat.run_id(runid);
+            self.I_sat_std.val(perr[1]), self.I_sat_std.run_id(runid);
+            self.trans_cond_R2.val(R2), self.trans_cond_R2.run_id(runid);
         except IndexError as e:
             print(f'\tWARNING: could not determine pinchoff range for trans conductance fit. Giving up.')
 
@@ -578,8 +568,12 @@ class FET(Instrument):
         v_gate = df.index.values.flatten()
         g_sd = df.values.flatten()/self.source_bias/COND_QUANT
 
-        self.G_max, self.dGdV_max = cond_stats(v_gate, g_sd)
-        self.V_th_stat = v_th_stats(v_gate, g_sd, window_length=20, y_threshold=0.01)
+        G_max, dGdV_max = cond_stats(v_gate, g_sd)
+        V_th_stat = v_th_stats(v_gate, g_sd, window_length=20, y_threshold=0.01)
+
+        self.G_max.val(G_max), self.G_max.run_id(runid);
+        self.dGdV_max.val(dGdV_max), self.dGdV_max.run_id(runid);
+        self.V_th_stat.val(V_th_stat), self.V_th_stat.run_id(runid);
 
     def fit_sub_threshold(self, runid):
         # fit to trans conductance curve
@@ -591,8 +585,8 @@ class FET(Instrument):
             popt, perr, R2 = sub_threshold_fit(v_gate,i_sd)
 
             # store data in device object
-            self.sub_threshold_swing = 1/popt[1] # V/decade
-            self.sub_threshold_swing_R2 = R2
+            self.sub_threshold_swing.val(1/popt[1]), self.sub_threshold_swing.run_id(runid);
+            self.sub_threshold_swing_R2.val(R2), self.sub_threshold_swing_R2.run_id(runid);
         except Exception as e:
             print(f'\tWARNING: could fit subthreshold swing. MSG: {e}')
 
@@ -607,12 +601,71 @@ class FET(Instrument):
             vth_up = v_th_stats(v_gate, g_sd[1], window_length=20, y_threshold=0.01)
 
             try:
-                setattr(self, 'hysteresis_' + str(int(10*swing)).zfill(3), vth_down-vth_up)
+                hyst = getattr(self, 'hysteresis_' + str(int(10*swing)).zfill(3))
+                hyst.val(vth_down-vth_up), hyst.run_id(runid);
             except TypeError:
                 # handles the case of one of the thresholds being None
-                setattr(self, 'hysteresis_' + str(int(10*swing)).zfill(3), None)
+                pass
 
-    def save(self):
+    def _to_json(self):
 
         jstr = json.dumps(self.__dict__, cls = devJSONEncoder, indent=4, sort_keys=True)
         return jstr
+
+    def _from_json(self, jdict):
+
+        # get all the attributes
+        attrs = ['_pin_map', 'gate_delay', 'gate_leak_runid', 'gate_step_coarse',
+                 'gate_step_fine', 'hysteresis_runid', 'name', 'pinchoff_runid',
+                 'short_name', 'ss_runid']
+        for key, val in jdict.items():
+            if (key in attrs) and (val is not None):
+                setattr(self, key, val)
+
+        if 'pickle_path' in jdict:
+            path = jdict['pickle_path']
+            if path is not None:
+                setattr(self, key, Path(jdict['pickle_path']))
+
+        # get all params
+        attrs = ['IDN', 'V_bias', 'V_open', 'drain_pin', 'gate_pin',
+                 'hysteresis_Vswing', 'leakage_threshold', 'length',
+                 'resistance_threshold', 'source_pin', 'structure', 'width']
+        for key, val in jdict['parameters'].items():
+            if key in attrs:
+                try:
+                    v = val['raw_value']
+                    # setattr(self, key, val)
+                except Exception as e:
+                    print(f'[ERROR]: {e}')
+
+        # get all results
+        attrs = ['G_max', 'Gm', 'Gm_std', 'I_sat', 'I_sat_std', 'R_open',
+                 'V_th_fit', 'V_th_fit_std', 'V_th_stat', 'dGdV_max',
+                 'gate_max', 'gate_min', 'hysteresis_005',
+                 'hysteresis_010', 'hysteresis_015', 'sub_threshold_swing',
+                 'sub_threshold_swing_R2', 'trans_cond_R2']
+        for key, val in jdict['submodules'].items():
+            if key in attrs:
+                try:
+                    v = val['val']
+                    runid = val['run_id']
+                    # setattr(self, key, val)
+                except Exception as e:
+                    print(f'[ERROR]: {e}')
+
+    def save(self):
+
+        jstr = self._to_json()
+
+        fpath = self.pickle_path / Path(f'{self.name}.json')
+        with fpath.open('w+') as f:
+            f.write(jstr)
+
+    def load(self):
+
+        fpath = self.pickle_path / Path(f'{self.name}.json')
+        with fpath.open('r') as f:
+            jdict = json.load(f)
+            if jdict != {}:
+                self._from_json(jdict)

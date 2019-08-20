@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 import numbers
 import numpy as np
 
@@ -37,11 +38,58 @@ def _dfdx(f, x, axis = None):
     dx = (x - np.roll(x,1))[1:].mean()
     return np.gradient(f,dx, axis = axis)
 
+### dummy contact/gate ###
+
+class DummyChan(InstrumentChannel):
+
+    def __init__(self, parent, name, chip_num):
+
+        """
+        Args:
+            parent (Instrument): The device the result is extract from
+            name (str): the name of the extracted result
+            chip_num (int): pin number on chip carrier/socket/daughter board
+        """
+
+        self._dev = parent
+        self._chip_num = chip_num
+        self._mdac_channel = self._dev._pin_map[chip_num]
+
+        super().__init__(parent, name)
+        self.name = name
+
+        self.add_parameter('failed',
+                           label='Contact Failed',
+                           get_cmd=None,
+                           set_cmd=None,
+                           initial_value=False,
+                           vals=Bool())
+
+    def chip_number(self):
+        """ number on the chip carrier"""
+        return self._chip_num
+
+    def mdac_number(self):
+        """ DAC channel number corresponding to SMC channel numbers"""
+        return self._mdac_channel
+
+    def _to_dict(self):
+
+        snap = {
+            "name": self.name,
+            "chip_number": self.chip_number(),
+            "mdac_number": self.mdac_number(),
+            "ts": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "failed": self.failed(),
+            }
+
+        return snap
+
 ### channels ###
 
 class Result(InstrumentChannel):
 
-     def __init__(self, parent, name, unit):
+    def __init__(self, parent, name, unit):
 
         """
         Args:
@@ -64,6 +112,21 @@ class Result(InstrumentChannel):
                            get_cmd=None,
                            set_cmd=None,
                            unit=unit)
+
+    def _to_dict(self):
+
+        snap = {
+            "name": self.name,
+            "val": self.val(),
+            "run_id": self.run_id(),
+            "ts": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+        for attr in set(self._meta_attrs):
+            if hasattr(self, attr):
+                snap[attr] = getattr(self, attr)
+
+        return snap
 
 class Contact(MDACChannel):
     ''' class for ohmic contacts '''
@@ -130,6 +193,27 @@ class Contact(MDACChannel):
         self.awg_off()
         self.voltage.set(offset)
 
+    def _to_dict(self):
+
+        snap = {
+            "name": self.name,
+            "chip_number": self.chip_number(),
+            "mdac_number": self.mdac_number(),
+            "ts": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "failed": self.failed(),
+            }
+
+        snap["voltage"] = self.voltage.snapshot(),
+        snap["relays:"] = {
+                            "dac_output": self.dac_output(),
+                            "bus": self.bus(),
+                            "gnd": self.gnd(),
+                            "microd": self.microd(),
+                            "smc": self.smc(),
+                            }
+        return snap
+
+
 class Gate(MDACChannel):
     ''' class for gates '''
 
@@ -163,9 +247,29 @@ class Gate(MDACChannel):
         """ DAC channel number corresponding to SMC channel numbers"""
         return self._mdac_channel
 
+    def _to_dict(self):
+
+        snap = {
+            "name": self.name,
+            "chip_number": self.chip_number(),
+            "mdac_number": self.mdac_number(),
+            "ts": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "failed": self.failed(),
+            }
+
+        snap["voltage"] = self.voltage.snapshot(),
+        snap["relays:"] = {
+                            "dac_output": self.dac_output(),
+                            "bus": self.bus(),
+                            "gnd": self.gnd(),
+                            "microd": self.microd(),
+                            "smc": self.smc(),
+                           }
+        return snap
+
 ### load/save device classes ###
 
-def mdac_simple_snapshot(obj):
+def _mdac_simple_dict(obj):
 
         snap = {
             "__class__": full_class(obj)
@@ -226,9 +330,12 @@ class devJSONEncoder(json.JSONEncoder):
 
             # special case for MDAC, because that mess takes too long...
             if 'MDAC' in str(obj):
-                return mdac_simple_snapshot(obj)
+                return _mdac_simple_dict(obj)
             else:
                 return obj.snapshot(update=False)
+
+        elif isinstance(obj, (Result, Contact, Gate)):
+            return obj._to_dict()
 
         # other/fallback
         elif hasattr(obj, '_JSONEncoder'):
@@ -249,3 +356,55 @@ class devJSONEncoder(json.JSONEncoder):
                     # we cannot convert the object to JSON, just take a string
                     s = str(obj)
             return s
+
+### measurements ###
+
+def _meas_gate_leak(v_gate_param, i_param, v_step, v_max, delay,
+                    di_limit=None, compliance=None, plot_logs=False, write_period=0.1):
+
+    meas = Measurement()
+    meas.write_period = write_period
+
+    meas.register_parameter(v_gate_param)
+    v_gate_param.post_delay = 0
+
+    meas.register_parameter(i_param, setpoints=(v_gate_param,))
+
+    with meas.run() as ds:
+
+        plot_subscriber = QCSubscriber(ds.dataset, v_gate_param, [i_param],
+                                       grid=None, log=plot_logs)
+        ds.dataset.subscribe(plot_subscriber)
+
+        curr = np.array([])
+        for vg in gen_sweep_array(0, v_max, step=v_step):
+
+            v_gate_param.set(vg)
+            time.sleep(delay)
+
+            curr = np.append(curr, i_param.get())
+            ds.add_result((v_gate_param, vg),
+                          (i_param, curr[-1]))
+
+            if vg>0:
+                if np.abs(curr.max() - curr.min()) > di_limit:
+                    print('Leakage current limit exceeded!')
+                    vmax = vg-v_step # previous step was the limit
+                    break
+                elif np.abs(curr[-1]) > compliance:
+                    print('Current compliance level exceeded!')
+                    vmax = vg - v_step # previous step was the limit
+                    break
+        else:
+            vmax = v_max
+
+        for vg in gen_sweep_array(vmax, 0, step=volt_step):
+
+            v_gate_param.set(vg)
+            time.sleep(delay)
+
+            curr = np.append(curr, i_param.get())
+            ds.add_result((v_gate_param, vg),
+                          (i_param, curr[-1]))
+
+        return ds.run_id, vmax
