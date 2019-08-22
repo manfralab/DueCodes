@@ -1,15 +1,21 @@
 import json
+import time
 from datetime import datetime
 import numbers
 import numpy as np
 
-from qcodes.instrument.channel import InstrumentChannel, ChannelList
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import Parameter
+from qcodes.instrument.channel import InstrumentChannel, ChannelList
+from qcodes.dataset.measurements import Measurement
 from qcodes.utils.helpers import NumpyJSONEncoder, full_class
 from qcodes.utils.validators import Ints, Bool
 
 from shockley.drivers.MDAC.extMDAC import MDACChannel
+from shockley.sweeps import gen_sweep_array
+
+from shockplot import start_listener, listener_is_running
+from shockplot.qcodes_dataset import QCSubscriber
 
 ### socket maps ###
 
@@ -53,7 +59,7 @@ class DummyChan(InstrumentChannel):
 
         self._dev = parent
         self._chip_num = chip_num
-        self._mdac_channel = self._dev._pin_map[chip_num]
+        self._mdac_channel = self._dev.pin_map[chip_num]
 
         super().__init__(parent, name)
         self.name = name
@@ -76,6 +82,7 @@ class DummyChan(InstrumentChannel):
     def _to_dict(self):
 
         snap = {
+            "__class__": 'device.DummyChan',
             "name": self.name,
             "chip_number": self.chip_number(),
             "mdac_number": self.mdac_number(),
@@ -116,8 +123,9 @@ class Result(InstrumentChannel):
     def _to_dict(self):
 
         snap = {
+            "__class__": 'device.Result',
             "name": self.name,
-            "val": self.val(),
+            "value": self.val(),
             "run_id": self.run_id(),
             "ts": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
@@ -141,7 +149,7 @@ class Contact(MDACChannel):
 
         self._dev = parent
         self._chip_num = chip_num
-        self._mdac_channel = self._dev._pin_map[chip_num]
+        self._mdac_channel = self._dev.pin_map[chip_num]
 
         super().__init__(self._dev._mdac, name, self._mdac_channel)
         self.name = name
@@ -196,6 +204,7 @@ class Contact(MDACChannel):
     def _to_dict(self):
 
         snap = {
+            "__class__": 'device.Contact',
             "name": self.name,
             "chip_number": self.chip_number(),
             "mdac_number": self.mdac_number(),
@@ -227,7 +236,7 @@ class Gate(MDACChannel):
 
         self._dev = parent
         self._chip_num = chip_num
-        self._mdac_channel = self._dev._pin_map[chip_num]
+        self._mdac_channel = self._dev.pin_map[chip_num]
 
         super().__init__(self._dev._mdac, name, self._mdac_channel)
         self.name = name
@@ -250,6 +259,7 @@ class Gate(MDACChannel):
     def _to_dict(self):
 
         snap = {
+            "__class__": 'device.Gate',
             "name": self.name,
             "chip_number": self.chip_number(),
             "mdac_number": self.mdac_number(),
@@ -334,7 +344,8 @@ class devJSONEncoder(json.JSONEncoder):
             else:
                 return obj.snapshot(update=False)
 
-        elif isinstance(obj, (Result, Contact, Gate)):
+        elif isinstance(obj, (Result, Contact, Gate, DummyChan)):
+
             return obj._to_dict()
 
         # other/fallback
@@ -356,6 +367,54 @@ class devJSONEncoder(json.JSONEncoder):
                     # we cannot convert the object to JSON, just take a string
                     s = str(obj)
             return s
+
+def parse_json_dump(jstr, device=None):
+    # parse the json string from a device dump
+    # back into a simple dictionary with only one level
+    # and optionally load parameters back into the device
+
+    jdict = json.loads(jstr)
+
+    data = {}
+    for key, val in jdict.items():
+        if (key.startswith('_')) or (key in ['log', 'functions', 'metadata']):
+            continue
+
+        if key in ['parameters', 'submodules']:
+            for subkey, subval in val.items():
+                if subkey in ['IDN']:
+                    continue
+
+                if '__class__' in subval:
+                    if subval['__class__']=='qcodes.instrument.parameter.Parameter':
+                        v = subval['value']
+                        data[subkey] = v
+                        if device:
+                            try:
+                                getattr(device, subkey).set(v)
+                            except TypeError:
+                                pass
+                    if subval['__class__']=='device.Result':
+                        v = subval['value']
+                        run = subval['run_id']
+                        data[subkey] = v
+                        if device:
+                            try:
+                                getattr(device, subkey).val.set(v)
+                                getattr(device, subkey).run_id.set(run)
+                            except TypeError:
+                                pass
+                else:
+                    data[subkey] = subval # no idea what to do with this
+        else:
+            data[key] = val # some normal thing
+            if device:
+                try:
+                    setattr(device, key, val)
+                except (TypeError, AttributeError):
+                    pass
+
+    return data
 
 ### measurements ###
 
@@ -398,7 +457,7 @@ def _meas_gate_leak(v_gate_param, i_param, v_step, v_max, delay,
         else:
             vmax = v_max
 
-        for vg in gen_sweep_array(vmax, 0, step=volt_step):
+        for vg in gen_sweep_array(vmax, 0, step=v_step):
 
             v_gate_param.set(vg)
             time.sleep(delay)

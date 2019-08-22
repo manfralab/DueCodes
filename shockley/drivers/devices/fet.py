@@ -7,14 +7,21 @@ from pathlib import Path
 import time
 import json
 import numpy as np
+import pandas as pd
 from scipy.optimize import curve_fit
 from qcodes.instrument.base import Instrument
+from qcodes.instrument.parameter import Parameter
 from qcodes.dataset.measurements import Measurement
 from qcodes.utils.validators import Strings, Numbers, Ints, Lists
 
 from shockley import get_data_from_ds
 from shockley.drivers.parameters import CounterParam
-from shockley.drivers.devices.generic import *
+from shockley.drivers.devices.generic import COND_QUANT, LCC_MAP, DIRECT_MAP, \
+                                             _dfdx, _meas_gate_leak, \
+                                             devJSONEncoder, parse_json_dump,\
+                                             Result, Contact, Gate, DummyChan
+
+
 
 from shockley.sweeps import do1d, do1d_repeat_twoway, gen_sweep_array
 
@@ -178,7 +185,7 @@ class SingleFET(Instrument):
     ''' FET device class '''
 
     def __init__(self, name, source=None, drain=None, gate=None,
-                 chip_carrier=None,  pickle_path='./_pickle_jar', **kwargs):
+                 chip_carrier=None,  dev_store='./_dev_store', **kwargs):
         '''
         This assumes I have an SMU connected to the bus of the MDAC
         and the cryostat is directly connected to the MDAC microd connections.
@@ -203,14 +210,14 @@ class SingleFET(Instrument):
         self._volt = None
 
         if chip_carrier is None:
-            self._pin_map = DIRECT_MAP
+            self.pin_map = DIRECT_MAP
         elif chip_carrier=='lcc':
-            self._pin_map = LCC_MAP
+            self.pin_map = LCC_MAP
         else:
             raise ValueError('pin to MDAC mapping not defined')
 
-        self.pickle_path = Path(pickle_path).resolve()
-        self.pickle_path.mkdir(parents=True, exist_ok=True)
+        self.dev_store = Path(dev_store).resolve()
+        self.dev_store.mkdir(parents=True, exist_ok=True)
 
         super().__init__(name, **kwargs)
 
@@ -264,6 +271,7 @@ class SingleFET(Instrument):
 
         # track history
         self.gate_leak_runid = []
+        self.iv_runid = []
         self.pinchoff_runid = []
         self.ss_runid = []
         self.hysteresis_runid = []
@@ -274,6 +282,11 @@ class SingleFET(Instrument):
                         unit='A',
                         set_cmd=None,
                         initial_value=400e-12)
+        self.add_parameter('gate_threshold',
+                        label='Cutoff For Useful Gates',
+                        unit='V',
+                        set_cmd=None,
+                        initial_value=0.5)
         self.add_parameter('resistance_threshold',
                         label='Resistance Threshold',
                         unit='Ohm',
@@ -313,6 +326,11 @@ class SingleFET(Instrument):
         for res_name, res_unit in zip(results_names, results_units):
             res = Result(self, res_name, res_unit)
             self.add_submodule(res_name, res)
+
+        try:
+            self.load()
+        except Exception as e:
+            print(f'[ERROR] (while loading saved parameters): {e}')
 
 
     def add_instruments(self, mdac=None, smu_curr=None, smu_volt=None):
@@ -357,6 +375,11 @@ class SingleFET(Instrument):
         self.drain.voltage.inter_delay = 0.01
         self.drain._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
 
+        try:
+            self.load()
+        except Exception as e:
+            print(f'[ERROR] (while loading saved parameters): {e}')
+
     def connect(self):
 
         self.drain.voltage(0.0)
@@ -385,10 +408,13 @@ class SingleFET(Instrument):
             self.source.voltage(0.0)
             self.source.microd_float()
 
-    def meas_gate_leak(self):
+    def working(self):
+        if any([self.source.failed(), self.drain.failed(), self.gate.failed()]):
+            return False
+        else:
+            return True
 
-        if not listener_is_running():
-            start_listener()
+    def connect_leakage(self):
 
         if self._volt:
             volt_set = self._volt
@@ -401,9 +427,19 @@ class SingleFET(Instrument):
             self.drain.microd_to_bus()
             self.gate.microd_to_dac()
 
+    def meas_gate_leak(self, overwrite = False):
+
+        if (overwrite==False) and (self.gate_max.val() is not None):
+            run_id = self.gate_max.run_id()
+            print(f'Gate leakage for {self.name} already measured in run {run_id}.')
+            return run_id
+
+        if not listener_is_running():
+            start_listener()
+
         run_id, vmax = _meas_gate_leak(volt_set, self._current, self.gate_step_coarse,
                                        self.gate._get_maxlimit(), self.gate_delay,
-                                       di_limit=self.gate_leak_thresh, compliance=2e-9)
+                                       di_limit=self.leakage_threshold(), compliance=2e-9)
 
         # record results
         self.gate_leak_runid.append(run_id)
@@ -413,37 +449,55 @@ class SingleFET(Instrument):
         self.gate_max.run_id(run_id)
 
         # adjust limits
-        self.V_open(min(self.gate_max(), self.V_open()))
-        self.gate._set_limits(minlimit=self.gate_min, maxlimit=self.gate_max)
+        self.V_open(min(self.gate_max.val(), self.V_open()))
+        self.gate._set_limits(minlimit=self.gate_min.val(), maxlimit=self.gate_max.val())
 
         if vmax < 0.5:
             self.gate.failed(True)
 
+        self.save()
+
         return run_id
 
-    def meas_connectivity(self):
+    def meas_connectivity(self, overwrite = False):
         ''' test pairs of contacts to see what is connected '''
 
-        self.connect()
+        if (overwrite==False) and (self.R_open.val() is not None):
+            run_id = self.R_open.run_id()
+            print(f'Connectivity for {self.name} already measured in run {run_id}.')
+            return run_id
+
         self.gate.voltage(self.V_open())
 
         xarray = gen_sweep_array(-0.025, 0.025, num=251)
-        runid = do1d(self.source.voltage, xarray, 0.05, self._current)
+        run_id = do1d(self.source.voltage, xarray, 0.05, self._current)
 
-        dd = get_data_from_ds(runid, self._current.name, dtype='numpy')
+        dd = get_data_from_ds(run_id, self._current.name, dtype='numpy')
 
         bias = dd['x']['vals']
         current = dd['y']['vals']
         popt = np.polyfit(bias, current, 1)
         R = 1/popt[0]
+
         self.R_open.val(R)
+        self.R_open.run_id(run_id)
+        self.iv_runid.append(run_id)
 
         if (R > self.resistance_threshold()) or (R < 0):
             self.source.failed(True)
             self.drain.failed(True)
 
-    def meas_pinch_off(self, exit_on_vth = False,
+        self.save()
+
+        return run_id
+
+    def meas_pinch_off(self, exit_on_vth = False, overwrite = False,
                        send_grid=True, plot_logs=False, write_period=0.1):
+
+        if (overwrite==False) and (len(self.pinchoff_runid)>0):
+            print(f'Pinchoff for {self.name} already measured in run(s) {self.pinchoff_runid}. '
+                   'Returning most recent run.')
+            return self.pinchoff_runid[-1]
 
         if not listener_is_running():
             start_listener()
@@ -455,6 +509,7 @@ class SingleFET(Instrument):
 
         self.source.voltage(self.V_bias())
         self.gate.voltage(self.V_open())
+        time.sleep(0.5)
 
         xarray = gen_sweep_array(self.V_open(), self.gate_min.val()-self.gate_step_coarse,
                                  step=self.gate_step_coarse)
@@ -485,7 +540,7 @@ class SingleFET(Instrument):
                 if exit_on_vth and i>20:
                     # exit if a threshold voltage is found that is
                     # at least 0.5V from the most negative gate voltage
-                    vth = v_th_stats(xarray[0:i], current[0:i]/self.source_bias/COND_QUANT,
+                    vth = v_th_stats(xarray[0:i], current[0:i]/self.V_bias()/COND_QUANT,
                                      window_length=20, y_threshold=0.005, x_error = 0.5)
                     if vth is not None:
                         print('Threshold voltage found. Exiting sweep.')
@@ -494,21 +549,32 @@ class SingleFET(Instrument):
             time.sleep(write_period) # let final data points propogate to plot
             self.pinchoff_runid.append(ds.run_id)
 
-    def meas_sub_threshold(self, send_grid=True, plot_logs=False, write_period=0.1):
+            self.save()
+
+            return ds.run_id
+
+    def meas_sub_threshold(self, overwrite = False,
+                           send_grid=True, plot_logs=False, write_period=0.1):
 
         if (self.V_th_fit.val() is None):
             print('ERROR: cannot measure subthreshold region without a value for V_th_fit.')
-            return 0
+            return -1
+
+        if (overwrite==False) and (len(self.ss_runid)):
+            print(f'Gate leakage for {self.name} already measured in run(s) {self.ss_runid}.'
+                    ' Returning most recent run.')
+            return self.ss_runid[-1]
 
         if not listener_is_running():
             start_listener()
 
         self.source.voltage(self.V_bias())
         self.gate.voltage(self.V_open())
+        time.sleep(0.5)
 
         v1 = self.V_open()
-        v2 = self.V_th_fit.val() + 0.5
-        v3 = max(self.V_th_fit.val() - 1.0, self.gate_min.val())
+        v2 = self.V_th_fit.val() + 0.25
+        v3 = max(self.V_th_fit.val() - 1.25, self.gate_min.val())
         xarray = np.concatenate((gen_sweep_array(v1, v2, step=self.gate_step_coarse),
                                  gen_sweep_array(v2-self.gate_step_fine, v3, step=self.gate_step_fine)))
 
@@ -516,14 +582,22 @@ class SingleFET(Instrument):
 
         self.ss_runid.append(run_id)
 
-    def meas_hysteresis(self, delayy = 2.0):
+        self.save()
+        return run_id
 
-        if hasattr(self, 'V_th_stat')==False or (self.V_th_stat is None):
+    def meas_hysteresis(self, delayy = 2.0, overwrite=False):
+
+        if (self.V_th_stat.val() is None):
             print('ERROR: cannot measure hysteresis without a value for V_th_stat.')
-            return 0
+            return -1
+
+        if (overwrite==False) and (len(self.hysteresis_runid)>0):
+            print(f'Pinchoff for {self.name} already measured in runs {self.hysteresis_runid}. '
+                   'Returning most recent runs.')
+            return self.hysteresis_runid[-1]
 
         runids = [None, None, None]
-        for i, swing in enumerate(self.hysteresis_swing()):
+        for i, swing in enumerate(self.hysteresis_Vswing()):
 
             vmax = self.V_open()
             vmin  = self.V_th_stat.val() - swing
@@ -541,6 +615,8 @@ class SingleFET(Instrument):
                                                2, delayy, self._current)
 
         self.hysteresis_runid.append(runids)
+        self.save()
+        return runids
 
     def fit_pinchoff(self, runid):
         # fit to trans conductance curve
@@ -559,14 +635,20 @@ class SingleFET(Instrument):
             self.I_sat.val(popt[1]), self.I_sat.run_id(runid);
             self.I_sat_std.val(perr[1]), self.I_sat_std.run_id(runid);
             self.trans_cond_R2.val(R2), self.trans_cond_R2.run_id(runid);
+
+            xfit = v_gate; yfit = _trans_func(v_gate, *popt);
         except IndexError as e:
             print(f'\tWARNING: could not determine pinchoff range for trans conductance fit. Giving up.')
+            xfit = np.array([]); yfit = np.array([]);
+
+        self.save()
+        return xfit, yfit
 
     def get_pinchoff_stats(self, runid):
 
         df = get_data_from_ds(runid, self._current.name, dtype='pandas')
         v_gate = df.index.values.flatten()
-        g_sd = df.values.flatten()/self.source_bias/COND_QUANT
+        g_sd = df.values.flatten()/self.V_bias()/COND_QUANT
 
         G_max, dGdV_max = cond_stats(v_gate, g_sd)
         V_th_stat = v_th_stats(v_gate, g_sd, window_length=20, y_threshold=0.01)
@@ -575,97 +657,112 @@ class SingleFET(Instrument):
         self.dGdV_max.val(dGdV_max), self.dGdV_max.run_id(runid);
         self.V_th_stat.val(V_th_stat), self.V_th_stat.run_id(runid);
 
+        self.save()
+
+        return V_th_stat, G_max, dGdV_max
+
     def fit_sub_threshold(self, runid):
+
         # fit to trans conductance curve
         df = get_data_from_ds(runid, self._current.name, dtype='pandas')
         v_gate = df.index.values.flatten()
         i_sd = df.values.flatten()
 
+        idx = np.argsort(v_gate)
+        v_gate = v_gate[idx]
+        i_sd = i_sd[idx]
+
         try:
             popt, perr, R2 = sub_threshold_fit(v_gate,i_sd)
+            ind_vth = np.argmin(np.abs(v_gate-self.V_th_fit.val()))
 
             # store data in device object
             self.sub_threshold_swing.val(1/popt[1]), self.sub_threshold_swing.run_id(runid);
             self.sub_threshold_swing_R2.val(R2), self.sub_threshold_swing_R2.run_id(runid);
+            xfit = v_gate; yfit = _sub_threshold_func(v_gate, *popt)
+
+            xfit  = v_gate[0:ind_vth]
+            yfit  = _sub_threshold_func(xfit, *popt)
         except Exception as e:
             print(f'\tWARNING: could fit subthreshold swing. MSG: {e}')
+            xfit = np.array([]); yfit = np.array([]);
+
+        self.save()
+        return xfit, yfit
 
     def get_hysteresis(self, runids):
 
-        for swing, runid in zip(self.hysteresis_swing, runids):
+        v_th_results = []
+        for swing, runid in zip(self.hysteresis_Vswing(), runids):
             dd = get_data_from_ds(runid, self._current.name, dtype='numpy')
             v_gate = dd['x']['vals']
-            g_sd = dd['z']['vals']/self.source_bias/COND_QUANT
+            g_sd = dd['z']['vals']/self.V_bias()/COND_QUANT
 
             vth_down = v_th_stats(v_gate, g_sd[0], window_length=20, y_threshold=0.01)
             vth_up = v_th_stats(v_gate, g_sd[1], window_length=20, y_threshold=0.01)
 
             try:
                 hyst = getattr(self, 'hysteresis_' + str(int(10*swing)).zfill(3))
-                hyst.val(vth_down-vth_up), hyst.run_id(runid);
+                hyst.val(vth_down-vth_up); hyst.run_id(runid);
             except TypeError:
                 # handles the case of one of the thresholds being None
                 pass
+            v_th_results.append((vth_down, vth_up))
+
+        self.save()
+        return v_th_results
 
     def _to_json(self):
 
         jstr = json.dumps(self.__dict__, cls = devJSONEncoder, indent=4, sort_keys=True)
         return jstr
 
-    def _from_json(self, jdict):
-
-        # get all the attributes
-        attrs = ['_pin_map', 'gate_delay', 'gate_leak_runid', 'gate_step_coarse',
-                 'gate_step_fine', 'hysteresis_runid', 'name', 'pinchoff_runid',
-                 'short_name', 'ss_runid']
-        for key, val in jdict.items():
-            if (key in attrs) and (val is not None):
-                setattr(self, key, val)
-
-        if 'pickle_path' in jdict:
-            path = jdict['pickle_path']
-            if path is not None:
-                setattr(self, key, Path(jdict['pickle_path']))
-
-        # get all params
-        attrs = ['IDN', 'V_bias', 'V_open', 'drain_pin', 'gate_pin',
-                 'hysteresis_Vswing', 'leakage_threshold', 'length',
-                 'resistance_threshold', 'source_pin', 'structure', 'width']
-        for key, val in jdict['parameters'].items():
-            if key in attrs:
-                try:
-                    v = val['raw_value']
-                    # setattr(self, key, val)
-                except Exception as e:
-                    print(f'[ERROR]: {e}')
-
-        # get all results
-        attrs = ['G_max', 'Gm', 'Gm_std', 'I_sat', 'I_sat_std', 'R_open',
-                 'V_th_fit', 'V_th_fit_std', 'V_th_stat', 'dGdV_max',
-                 'gate_max', 'gate_min', 'hysteresis_005',
-                 'hysteresis_010', 'hysteresis_015', 'sub_threshold_swing',
-                 'sub_threshold_swing_R2', 'trans_cond_R2']
-        for key, val in jdict['submodules'].items():
-            if key in attrs:
-                try:
-                    v = val['val']
-                    runid = val['run_id']
-                    # setattr(self, key, val)
-                except Exception as e:
-                    print(f'[ERROR]: {e}')
-
     def save(self):
 
         jstr = self._to_json()
 
-        fpath = self.pickle_path / Path(f'{self.name}.json')
+        fpath = self.dev_store / Path(f'{self.name}.json')
         with fpath.open('w+') as f:
             f.write(jstr)
 
     def load(self):
 
-        fpath = self.pickle_path / Path(f'{self.name}.json')
+        fpath = self.dev_store / Path(f'{self.name}.json')
         with fpath.open('r') as f:
-            jdict = json.load(f)
-            if jdict != {}:
-                self._from_json(jdict)
+            jstr = f.read()
+
+        if jstr != '':
+
+            jdict = parse_json_dump(jstr, device=self)
+
+            if 'pin_map' in jdict:
+                self.pin_map = {int(k):v for k,v in self.pin_map.items()}
+
+            # convert pickle_path to proper type
+            if 'dev_store' in jdict:
+                path = jdict['dev_store']
+                if path is not None:
+                    self.dev_store = Path(jdict['dev_store']).resolve()
+
+            # update a few limits/tags
+            if self.gate_max.val() is not None:
+                self.V_open(min(self.gate_max.val(), self.V_open()))
+                if self.gate_max.val() < 0.5:
+                    self.gate.failed(True)
+
+                if isinstance(self.gate, Gate):
+                    self.gate._set_limits(maxlimit=self.gate_max.val())
+                    self.gate._set_limits(minlimit=self.gate_min.val())
+
+            if self.R_open.val() is not None:
+                if (self.R_open.val() > 2e6) or (self.R_open.val() < 0):
+                    self.source.failed(True)
+                    self.drain.failed(True)
+
+    def as_dataframe(self):
+
+        jstr = self._to_json()
+        jdict = parse_json_dump(jstr)
+        df = pd.DataFrame([jdict])
+
+        return df
