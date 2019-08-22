@@ -20,9 +20,6 @@ from shockley.drivers.devices.generic import COND_QUANT, LCC_MAP, DIRECT_MAP, \
                                              _dfdx, _meas_gate_leak, \
                                              devJSONEncoder, parse_json_dump,\
                                              Result, Contact, Gate, DummyChan
-
-
-
 from shockley.sweeps import do1d, do1d_repeat_twoway, gen_sweep_array
 
 from shockplot import start_listener, listener_is_running
@@ -639,6 +636,13 @@ class SingleFET(Instrument):
             xfit = v_gate; yfit = _trans_func(v_gate, *popt);
         except IndexError as e:
             print(f'\tWARNING: could not determine pinchoff range for trans conductance fit. Giving up.')
+            self.Gm.val(None), self.Gm.run_id(runid);
+            self.Gm_std.val(None), self.Gm_std.run_id(runid);
+            self.V_th_fit.val(None), self.V_th_fit.run_id(runid);
+            self.V_th_fit_std.val(None), self.V_th_fit_std.run_id(runid);
+            self.I_sat.val(None), self.I_sat.run_id(runid);
+            self.I_sat_std.val(None), self.I_sat_std.run_id(runid);
+            self.trans_cond_R2.val(None), self.trans_cond_R2.run_id(runid);
             xfit = np.array([]); yfit = np.array([]);
 
         self.save()
@@ -684,6 +688,8 @@ class SingleFET(Instrument):
             xfit  = v_gate[0:ind_vth]
             yfit  = _sub_threshold_func(xfit, *popt)
         except Exception as e:
+            self.sub_threshold_swing.val(None), self.sub_threshold_swing.run_id(runid);
+            self.sub_threshold_swing_R2.val(None), self.sub_threshold_swing_R2.run_id(runid);
             print(f'\tWARNING: could fit subthreshold swing. MSG: {e}')
             xfit = np.array([]); yfit = np.array([]);
 
@@ -706,7 +712,9 @@ class SingleFET(Instrument):
                 hyst.val(vth_down-vth_up); hyst.run_id(runid);
             except TypeError:
                 # handles the case of one of the thresholds being None
+                hyst.val(None); hyst.run_id(runid);
                 pass
+
             v_th_results.append((vth_down, vth_up))
 
         self.save()
