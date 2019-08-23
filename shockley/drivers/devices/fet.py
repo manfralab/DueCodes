@@ -224,7 +224,7 @@ class ArrayFET(Instrument):
 
         ### create dummy source submodule(s)
         if sources is None:
-            raise ValueError('define a source contact')
+            raise ValueError('define source contacts')
         else:
             self.add_parameter('source_pins',
                             label='Source Pin',
@@ -303,11 +303,15 @@ class ArrayFET(Instrument):
             src.voltage.inter_delay = 0.01
             src._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
 
-        for seg, src in zip(self.segments, self.sources):
+        for i, (seg, src) in enumerate(zip(self.segments, self.sources)):
             seg._mdac = self._mdac
             seg._current = self._current; seg._volt = self._volt
             seg.drain = self.drain; seg.gate = self.gate
             seg.source = src
+            seg.connect = lambda: self._connect_segment(i)
+            seg.disconnect = lambda: self._disconnect_segment(i)
+            seg.meas_gate_leak = self.meas_gate_leak
+
             try:
                 seg.load()
             except FileNotFoundError:
@@ -322,17 +326,91 @@ class ArrayFET(Instrument):
         super().close()
 
     def _connect_segment(self, i):
-        # connect segment i
-        pass
+
+        # should already be connected
+        self.gate.microd_to_dac()
+        self.drain.microd_to_bus()
+
+        self.sources[j].voltage(0.0)
+        self.sources[i].microd_to_dac()
+
+        # float the other sources
+        for j in [n for n in range(0,4) if n!=i]:
+            self.sources[j].voltage(0.0)
+            self.sources[j].microd_float()
+
 
     def _disconnect_segment(self, i):
-        # disconnect segment i
-        pass
+        self.sources[i].voltage(0.0)
+        self.sources[i].microd_float()
+
+    def disconnect(self):
+
+        self.drain.terminate()
+
+        for j in range(0,4):
+            self.sources[j].voltage(0.0)
+            self.sources[j].terminate()
 
     def as_dataframe(self):
         # concatenate all the DataFrames from each segment
-        pass
-        # return df
+        frames = []
+        for seg in self.segments:
+            frames.append(seg.as_dataframe())
+
+        df = pd.concat(frames)
+        del df['connect']
+        return df
+
+    def meas_gate_leak(self, overwrite = False):
+
+        seg0 = self.segments[0]
+        if (overwrite==False) and (seg0.gate_max.val() is not None):
+            run_id = self.segments[0].gate_max.run_id()
+            print(f'Gate leakage for {self.name} already measured in run {run_id}.')
+            return run_id
+
+        if not listener_is_running():
+            start_listener()
+
+        if self._volt:
+            volt_set = self._volt
+            self.drain.terminate()
+            for src in self.sources:
+                src.terminate()
+            self.gate.microd_to_bus()
+        else:
+            volt_set = self.gate.voltage
+            self.drain.microd_to_bus()
+            for src in self.sources:
+                src.microd_float()
+            self.gate.microd_to_dac()
+
+        run_id, vmax = _meas_gate_leak(volt_set, self._current, self.gate_step_coarse,
+                                       self.gate._get_maxlimit(), self.gate_delay,
+                                       di_limit=seg0.leakage_threshold(), compliance=0.5e-9)
+
+
+        for seg in self.segments:
+            # record results
+            seg.gate_leak_runid.append(run_id)
+            seg.gate_min.val(min(-1*vmax, -1*self.gate_step_coarse))
+            seg.gate_min.run_id(run_id)
+            seg.gate_max.val(max(vmax, self.gate_step_coarse))
+            seg.gate_max.run_id(run_id)
+
+            # adjust limits
+            seg.V_open(min(seg.gate_max.val(), seg.V_open()))
+            seg.gate._set_limits(minlimit=seg.gate_min.val(), maxlimit=seg.gate_max.val())
+
+            if vmax < 0.5:
+                seg.gate.failed(True)
+
+            seg.save()
+
+        return run_id
+
+
 
 class SingleFET(Instrument):
     ### TO DO:
@@ -593,7 +671,7 @@ class SingleFET(Instrument):
 
         run_id, vmax = _meas_gate_leak(volt_set, self._current, self.gate_step_coarse,
                                        self.gate._get_maxlimit(), self.gate_delay,
-                                       di_limit=self.leakage_threshold(), compliance=2e-9)
+                                       di_limit=self.leakage_threshold(), compliance=0.5-9)
 
         # record results
         self.gate_leak_runid.append(run_id)
