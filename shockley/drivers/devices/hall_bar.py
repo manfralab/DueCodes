@@ -16,7 +16,7 @@ from shockplot import start_listener, listener_is_running
 from shockplot.qcodes_dataset import QCSubscriber
 
 
-class HallBarDC(Instrument):
+class HallBar(Instrument):
 
     def __init__(self, name, ohmics=None, gate=None,
                  chip_carrier=None, dev_store='./_dev_store', **kwargs):
@@ -85,7 +85,7 @@ class HallBarDC(Instrument):
     #         self.segments[i] = SingleFET(s_name, source=s, drain=self.drain_pin(), gate=self.gate_pin(), chip_carrier=chip_carrier)
     #         self.add_submodule(f'segment{i}', self.segments[i])
     #
-    # def add_instruments_dc(self, mdac=None, smu_curr=None, smu_volt=None, xx_volt=None, xy_volt=None):
+    # def add_instruments(self, mdac=None, smu_curr=None, smu_volt=None, xx_volt=None, xy_volt=None):
     #     ''' add instruments to make measurements. this is optional if you are
     #         only loading the device for analysis. '''
     #
