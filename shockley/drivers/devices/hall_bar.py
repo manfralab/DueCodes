@@ -16,7 +16,7 @@ from shockplot import start_listener, listener_is_running
 from shockplot.qcodes_dataset import QCSubscriber
 
 
-class HallBar_2P(Instrument):
+class HallBar(Instrument):
     ''' 2 probe checks for Hall bar at zero field '''
 
     def __init__(self, name, md, smu_curr, ohmics=None, gate=None,

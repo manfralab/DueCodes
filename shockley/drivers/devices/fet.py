@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
 from qcodes.instrument.base import Instrument
+from qcodes.instrument.channel import ChannelList
 from qcodes.instrument.parameter import Parameter
 from qcodes.dataset.measurements import Measurement
 from qcodes.utils.validators import Strings, Numbers, Ints, Lists
@@ -173,7 +174,165 @@ def v_th_stats(x_data, y_data, window_length=10, y_threshold = 0.05, x_error = 1
 
     return x_off #, l_var, l_var_streak
 
-### device class ###
+### device classes ###
+
+class ArrayFET(Instrument):
+    ### a class that holds an array of wires with a common drain
+    # results and measurements are (as much as possible) stored in SingleFET
+    # this is just used for keeping track of connections
+
+    def __init__(self, name, sources=None, drain=None, gate=None,
+                 chip_carrier=None, dev_store='./_dev_store', **kwargs):
+
+        # make sure the instrument and measurement attributes
+        # exist but are None unless added explicitly
+        self._mdac = None
+        self._current = None
+        self._volt = None
+
+        if chip_carrier is None:
+            self.pin_map = DIRECT_MAP
+        elif chip_carrier=='lcc':
+            self.pin_map = LCC_MAP
+        else:
+            raise ValueError('pin to MDAC mapping not defined')
+
+        self.dev_store = Path(dev_store).resolve()
+        self.dev_store.mkdir(parents=True, exist_ok=True)
+
+        super().__init__(name, **kwargs)
+
+        ### Source/Drain/Gate setup ###
+        if drain is None:
+            raise ValueError('define a drain contact')
+        else:
+            d = DummyChan(self, f'{self.name}_drain', drain)
+            self.add_submodule(f'drain', d)
+            self.add_parameter('drain_pin',
+                            set_cmd=None,
+                            label='Drain Pin',
+                            initial_value=drain)
+        if gate is None:
+            raise ValueError('define a gate contact')
+        else:
+            g = DummyChan(self, f'{self.name}_gate', gate)
+            self.add_submodule('gate', g)
+            self.add_parameter('gate_pin',
+                            label='Gate Pin',
+                            set_cmd=None,
+                            initial_value=gate)
+
+        ### create dummy source submodule(s)
+        if sources is None:
+            raise ValueError('define a source contact')
+        else:
+            self.add_parameter('source_pins',
+                            label='Source Pin',
+                            set_cmd=None,
+                            initial_value=sources,
+                            validators=Lists(Ints()))
+
+            srcs = ChannelList(self, "Sources", DummyChan,
+                                   snapshotable=True)
+            for i, s in enumerate(self.source_pins()):
+                src = DummyChan(self, f'{self.name}_segment{i}_source', s)
+                srcs.append(src)
+            srcs.lock()
+            self.add_submodule('sources', srcs)
+
+        ### add FET submodules ###
+        self.segments = [None]*len(self.source_pins())
+        for i, s in enumerate(self.source_pins()):
+            s_name = f'{name}_segment{i}'
+            try:
+                inst = Instrument.find_instrument(s_name)
+                inst.close()
+                print('\t...closed')
+            except Exception as e:
+                # print(f'exception when closing: {e}')
+                pass
+
+            self.segments[i] = SingleFET(s_name, source=s, drain=self.drain_pin(), gate=self.gate_pin(), chip_carrier=chip_carrier)
+            self.add_submodule(f'segment{i}', self.segments[i])
+
+    def add_instruments(self, mdac=None, smu_curr=None, smu_volt=None):
+        ''' add instruments to make measurements. this is optional if you are
+            only loading the device for analysis. '''
+
+        if (mdac is None) or (smu_curr is None):
+            print('[WARNING]: instruments not loaded. provide MDAC and SMU_CURR.')
+            return None
+
+        self._mdac = mdac
+        self._current = smu_curr
+        self._volt = smu_volt
+        if self._volt is not None:
+            self._volt.step = 0.005
+            self._volt.inter_delay = 0.01
+
+        # overwrite dummy gate submodule
+        g = Gate(self, f'{self.name}_gate', self.gate_pin())
+        del self.submodules['gate']
+        self.add_submodule('gate', g)
+        self.gate.voltage.step = 0.005
+        self.gate.voltage.inter_delay = 0.01
+        self.gate._set_limits(minlimit=-5.0, maxlimit=5.0, ratelimit=5.0)
+        self.gate_step_coarse = 0.02 # V
+        self.gate_step_fine = 0.001 # V
+        self.gate_delay = 0.05
+
+        # overwrite dummy drain submodule
+        d = Contact(self, f'{self.name}_drain', self.drain_pin())
+        del self.submodules['drain']
+        self.add_submodule('drain', d)
+        self.drain.voltage.step = 0.005
+        self.drain.voltage.inter_delay = 0.01
+        self.drain._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
+
+        # overwrite dummy source submodules
+        srcs = ChannelList(self, "Sources", Contact,
+                               snapshotable=True)
+        for i, s in enumerate(self.source_pins()):
+            src = Contact(self, f'{self.name}_segment{i}_source', s)
+            srcs.append(src)
+        srcs.lock()
+        del self.submodules['sources']
+        self.add_submodule('sources', srcs)
+        for src in self.sources:
+            src.voltage.step = 0.005
+            src.voltage.inter_delay = 0.01
+            src._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
+
+        for seg, src in zip(self.segments, self.sources):
+            seg._mdac = self._mdac
+            seg._current = self._current; seg._volt = self._volt
+            seg.drain = self.drain; seg.gate = self.gate
+            seg.source = src
+            try:
+                seg.load()
+            except FileNotFoundError:
+                pass
+
+    def close(self):
+        # overwrite default close() so that this closes all of the individual wires as well
+        for seg in self.segments:
+            if seg is not None:
+                seg.close()
+
+        super().close()
+
+    def _connect_segment(self, i):
+        # connect segment i
+        pass
+
+    def _disconnect_segment(self, i):
+        # disconnect segment i
+        pass
+
+    def as_dataframe(self):
+        # concatenate all the DataFrames from each segment
+        pass
+        # return df
 
 class SingleFET(Instrument):
     ### TO DO:
@@ -224,8 +383,8 @@ class SingleFET(Instrument):
         else:
             s = DummyChan(self, f'source', source)
             self.add_submodule('source', s)
-            self.add_parameter('source_pin',
-                            label='Source Pin',
+            self.add_parameter('source_pins',
+                            label='Source Pins',
                             set_cmd=None,
                             initial_value=source)
         if drain is None:
@@ -326,8 +485,8 @@ class SingleFET(Instrument):
 
         try:
             self.load()
-        except Exception as e:
-            print(f'[ERROR] (while loading saved parameters): {e}')
+        except FileNotFoundError:
+            pass
 
 
     def add_instruments(self, mdac=None, smu_curr=None, smu_volt=None):
@@ -374,8 +533,8 @@ class SingleFET(Instrument):
 
         try:
             self.load()
-        except Exception as e:
-            print(f'[ERROR] (while loading saved parameters): {e}')
+        except FileNotFoundError:
+            pass
 
     def connect(self):
 
@@ -411,7 +570,15 @@ class SingleFET(Instrument):
         else:
             return True
 
-    def connect_leakage(self):
+    def meas_gate_leak(self, overwrite = False):
+
+        if (overwrite==False) and (self.gate_max.val() is not None):
+            run_id = self.gate_max.run_id()
+            print(f'Gate leakage for {self.name} already measured in run {run_id}.')
+            return run_id
+
+        if not listener_is_running():
+            start_listener()
 
         if self._volt:
             volt_set = self._volt
@@ -423,16 +590,6 @@ class SingleFET(Instrument):
             self.source.float()
             self.drain.microd_to_bus()
             self.gate.microd_to_dac()
-
-    def meas_gate_leak(self, overwrite = False):
-
-        if (overwrite==False) and (self.gate_max.val() is not None):
-            run_id = self.gate_max.run_id()
-            print(f'Gate leakage for {self.name} already measured in run {run_id}.')
-            return run_id
-
-        if not listener_is_running():
-            start_listener()
 
         run_id, vmax = _meas_gate_leak(volt_set, self._current, self.gate_step_coarse,
                                        self.gate._get_maxlimit(), self.gate_delay,
