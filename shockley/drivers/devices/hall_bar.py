@@ -89,12 +89,12 @@ class HallBar(Instrument):
             self.segments[i] = SingleFET(s_name, source=s, drain=d, gate=self.gate_pin(), chip_carrier=chip_carrier)
             self.add_submodule(f'segment{i}', self.segments[i])
 
-    def add_instruments_dc(self, mdac=None, smu_curr=None, smu_volt=None, xx_volt=None, xy_volt=None):
+    def add_instruments_2probe(self, mdac=None, smu_curr=None, smu_volt=None):
         ''' add instruments to make measurements. this is optional if you are
             only loading the device for analysis. '''
 
         if (mdac is None) or (smu_curr is None):
-            print('[WARNING]: instruments not loaded. provide at least MDAC and SMU_CURR.')
+            print('[WARNING]: instruments not loaded. provide at MDAC and SMU_CURR. (SMU_VOLT optional).')
             return None
 
         self._mdac = None
@@ -143,11 +143,17 @@ class HallBar(Instrument):
             except FileNotFoundError:
                 pass
 
+    def add_instruments_4probe(xx_volt=None, xy_volt=None,
+                               magx=None, magy=None, magz=None)
+
         # load lockin parameters for 4-probe hall measurements
-        if xx_volt is not None:
-            self._vxx = xx_volt
-        if xy_volt is not None:
-            self._vxy = xy_volt
+        if (xx_volt is None) or (xy_volt is None):
+            print('[WARNING]: instruments not loaded. provide at MDAC and SMU_CURR. (SMU_VOLT optional).')
+            return None
+
+        self._vxx = xx_volt
+        self._vxy = xy_volt
+
 
     def close(self):
         # overwrite default close() so that this closes all of the individual wires as well
