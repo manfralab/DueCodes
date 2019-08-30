@@ -35,8 +35,10 @@ class HallBar(Instrument):
         self._vxy = None
 
         if chip_carrier is None:
+            print('using direct pin mapping')
             self.pin_map = DIRECT_MAP
         elif chip_carrier=='lcc':
+            print('using lcc pin mapping')
             self.pin_map = LCC_MAP
         else:
             raise ValueError('pin to MDAC mapping not defined')
@@ -214,7 +216,7 @@ class HallBar(Instrument):
         for seg in self.segments:
             frames.append(seg.as_dataframe())
 
-        df = pd.concat(frames)
+        df = pd.concat(frames, ignore_index=True)
         del df['connect']
         return df
 
@@ -243,7 +245,7 @@ class HallBar(Instrument):
 
         run_id, vmax = _meas_gate_leak(volt_set, self._current, self.gate_step_coarse,
                                        5.0, self.gate_delay,
-                                       di_limit=seg0.leakage_threshold(), compliance=0.5e-9)
+                                       di_limit=seg0.leakage_threshold(), compliance=2e-9)
 
         for seg in self.segments:
             # record results
