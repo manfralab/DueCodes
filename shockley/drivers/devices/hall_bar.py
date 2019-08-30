@@ -2,14 +2,19 @@ import time
 import numpy as np
 import pandas as pd
 import itertools
+from pathlib import Path
 
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.channel import ChannelList
 from qcodes.dataset.measurements import Measurement
+from qcodes.utils.validators import Strings, Numbers, Ints, Lists
 
 from shockley import get_data_from_ds
-from shockley.drivers.devices.generic import _dfdx, Contact, Gate, \
-                                             LCC_MAP, DIRECT_MAP
+from shockley.drivers.devices.generic import COND_QUANT, LCC_MAP, DIRECT_MAP, \
+                                             _dfdx, binomial, _meas_gate_leak, \
+                                             devJSONEncoder, parse_json_dump,\
+                                             Result, Contact, Gate, DummyChan
+from shockley.drivers.devices.fet import SingleFET
 from shockley.sweeps import do1d
 
 from shockplot import start_listener, listener_is_running
@@ -71,13 +76,13 @@ class HallBar(Instrument):
             self.add_submodule('ohmics', ohms)
 
         ### add FET submodules ###
-        pairs = itertools.combinations(self.ohmics,2)
+        pairs = list(itertools.combinations(self.ohmics,2))
         self.segments = [None]*len(pairs)
         for i, pair in enumerate(pairs):
             s = pair[1].chip_number()
             d = pair[0].chip_number()
 
-            s_name = f'{name}_segment{i}'
+            s_name = f'{name}_segment{i:02d}'
             try:
                 inst = Instrument.find_instrument(s_name)
                 inst.close()
@@ -87,7 +92,7 @@ class HallBar(Instrument):
                 pass
 
             self.segments[i] = SingleFET(s_name, source=s, drain=d, gate=self.gate_pin(), chip_carrier=chip_carrier)
-            self.add_submodule(f'segment{i}', self.segments[i])
+            self.add_submodule(f'segment{i:02d}', self.segments[i])
 
     def add_instruments_2probe(self, mdac=None, smu_curr=None, smu_volt=None):
         ''' add instruments to make measurements. this is optional if you are
@@ -97,9 +102,12 @@ class HallBar(Instrument):
             print('[WARNING]: instruments not loaded. provide at MDAC and SMU_CURR. (SMU_VOLT optional).')
             return None
 
-        self._mdac = None
-        self._current = None
-        self._volt = None
+        self._mdac = mdac
+        self._current = smu_curr
+        self._volt = smu_volt
+        if self._volt is not None:
+            self._volt.step = 0.005
+            self._volt.inter_delay = 0.01
 
         # overwrite dummy gate submodule
         g = Gate(self, f'{self.name}_gate', self.gate_pin())
@@ -128,12 +136,22 @@ class HallBar(Instrument):
             o._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
 
         for i, (seg, pair) in enumerate(zip(self.segments, itertools.combinations(self.ohmics,2))):
-            s = pair[1].chip_number()
-            d = pair[0].chip_number()
+            s = pair[1]
+            d = pair[0]
+
             seg._mdac = self._mdac
-            seg._current = self._current; seg._volt = self._volt
-            seg.drain = d; seg.source = s
-            seg.gate = self.gate
+            seg._current = self._current
+            seg._volt = self._volt
+
+            del seg.submodules['drain']
+            seg.add_submodule('drain', d)
+
+            del seg.submodules['source']
+            seg.add_submodule('source', s)
+
+            del seg.submodules['gate']
+            seg.add_submodule('gate', self.gate)
+
             seg.connect = lambda: self._connect_segment(i)
             seg.disconnect = lambda: self._disconnect_segment(i)
             seg.meas_gate_leak = self.meas_gate_leak
@@ -144,7 +162,7 @@ class HallBar(Instrument):
                 pass
 
     def add_instruments_4probe(xx_volt=None, xy_volt=None,
-                               magx=None, magy=None, magz=None)
+                               magx=None, magy=None, magz=None):
 
         # load lockin parameters for 4-probe hall measurements
         if (xx_volt is None) or (xy_volt is None):
@@ -175,8 +193,8 @@ class HallBar(Instrument):
         # float the other sources
         s = self.segments[i].source.chip_number()
         d = self.segments[i].drain.chip_number()
-        for o on self.ohmics:
-            if o.chip_number not in [s, d]:
+        for o in self.ohmics:
+            if o.chip_number() not in [s, d]:
                 o.microd_float()
 
     def _disconnect_segment(self, i):
@@ -224,7 +242,7 @@ class HallBar(Instrument):
             self.gate.microd_to_dac()
 
         run_id, vmax = _meas_gate_leak(volt_set, self._current, self.gate_step_coarse,
-                                       self.gate._get_maxlimit(), self.gate_delay,
+                                       5.0, self.gate_delay,
                                        di_limit=seg0.leakage_threshold(), compliance=0.5e-9)
 
         for seg in self.segments:
@@ -237,11 +255,41 @@ class HallBar(Instrument):
 
             # adjust limits
             seg.V_open(min(seg.gate_max.val(), seg.V_open()))
-            seg.gate._set_limits(minlimit=seg.gate_min.val(), maxlimit=seg.gate_max.val())
+            if seg.V_open() < 0.1:
+                seg.V_open(0.0)
 
+            seg.gate._set_limits(minlimit=seg.gate_min.val(), maxlimit=seg.gate_max.val())
             if vmax < 0.5:
                 seg.gate.failed(True)
 
             seg.save()
 
         return run_id
+
+    def label_bad_contacts(self):
+
+        df = pd.DataFrame(index = range(len(self.segments)), columns = ['drain', 'source', 'R', 'passed'])
+
+        for i, seg in enumerate(self.segments):
+            s = seg.source.chip_number()
+            d = seg.drain.chip_number()
+            passed = (seg.R_open.val() < 2e6) and (seg.R_open.val() > 0)
+            df.loc[i] = (d, s, seg.R_open.val(), passed)
+
+        olist = [o.chip_number() for o in self.ohmics]
+        working = [True]*len(self.ohmics)
+        for i in range(len(self.ohmics)):
+            o = self.ohmics[i]
+            cn = olist[i]
+            passed = (df[(df['source']==cn) | (df['drain']==cn)]['passed'].values)
+            if np.any(passed):
+                working[i] = True
+                o.failed(False)
+            else:
+                working[i] = False
+                o.failed(True)
+
+        if binomial(sum(working),2)!=sum(df['passed']):
+            print('[WARNING] Results of contact test inconsistent. Hall bar likely discontinuous.')
+
+        return [(cn,'good') if w else (cn,'bad') for cn, w in zip(olist,working)]

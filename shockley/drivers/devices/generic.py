@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 import numbers
 import numpy as np
+import math
 
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import Parameter
@@ -38,6 +39,13 @@ DIRECT_MAP = {
 ### analysis ###
 
 COND_QUANT =  7.748091729e-5 # Siemens
+
+def binomial(x, y):
+    try:
+        binom = math.factorial(x) // math.factorial(y) // math.factorial(x - y)
+    except ValueError:
+        binom = 0
+    return binom
 
 def _dfdx(f, x, axis = None):
     # returns df(x)/dx
@@ -368,7 +376,7 @@ class devJSONEncoder(json.JSONEncoder):
                     s = str(obj)
             return s
 
-def parse_json_dump(jstr, device=None):
+def parse_json_dump(jstr, device=None, ignore_keys=[]):
     # parse the json string from a device dump
     # back into a simple dictionary with only one level
     # and optionally load parameters back into the device
@@ -377,7 +385,8 @@ def parse_json_dump(jstr, device=None):
 
     data = {}
     for key, val in jdict.items():
-        if (key.startswith('_')) or (key in ['log', 'functions', 'metadata']):
+
+        if (key in ignore_keys) or (key.startswith('_')) or (key in ['log', 'functions', 'metadata']):
             continue
 
         if key in ['parameters', 'submodules']:
@@ -394,7 +403,7 @@ def parse_json_dump(jstr, device=None):
                                 getattr(device, subkey).set(v)
                             except TypeError:
                                 pass
-                    if subval['__class__']=='device.Result':
+                    elif subval['__class__']=='device.Result':
                         v = subval['value']
                         run = subval['run_id']
                         data[subkey] = v
@@ -404,6 +413,8 @@ def parse_json_dump(jstr, device=None):
                                 getattr(device, subkey).run_id.set(run)
                             except TypeError:
                                 pass
+                    else:
+                        pass
                 else:
                     data[subkey] = subval # no idea what to do with this
         else:

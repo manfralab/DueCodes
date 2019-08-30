@@ -243,7 +243,7 @@ class ArrayFET(Instrument):
         ### add FET submodules ###
         self.segments = [None]*len(self.source_pins())
         for i, s in enumerate(self.source_pins()):
-            s_name = f'{name}_segment{i}'
+            s_name = f'{name}_segment{i:02d}'
             try:
                 inst = Instrument.find_instrument(s_name)
                 inst.close()
@@ -253,7 +253,7 @@ class ArrayFET(Instrument):
                 pass
 
             self.segments[i] = SingleFET(s_name, source=s, drain=self.drain_pin(), gate=self.gate_pin(), chip_carrier=chip_carrier)
-            self.add_submodule(f'segment{i}', self.segments[i])
+            self.add_submodule(f'segment{i:02d}', self.segments[i])
 
     def add_instruments(self, mdac=None, smu_curr=None, smu_volt=None):
         ''' add instruments to make measurements. this is optional if you are
@@ -298,24 +298,35 @@ class ArrayFET(Instrument):
         srcs.lock()
         del self.submodules['sources']
         self.add_submodule('sources', srcs)
+
         for src in self.sources:
             src.voltage.step = 0.005
             src.voltage.inter_delay = 0.01
             src._set_limits(minlimit=-0.5, maxlimit=0.5, ratelimit=5.0)
 
-        for i, (seg, src) in enumerate(zip(self.segments, self.sources)):
+        for i, (seg, s) in enumerate(zip(self.segments, self.sources)):
+
             seg._mdac = self._mdac
-            seg._current = self._current; seg._volt = self._volt
-            seg.drain = self.drain; seg.gate = self.gate
-            seg.source = src
+            seg._current = self._current
+            seg._volt = self._volt
+
+            del seg.submodules['drain']
+            seg.add_submodule('drain', self.drain)
+
+            del seg.submodules['source']
+            seg.add_submodule('source', s)
+
+            del seg.submodules['gate']
+            seg.add_submodule('gate', self.gate)
+
             seg.connect = lambda: self._connect_segment(i)
             seg.disconnect = lambda: self._disconnect_segment(i)
             seg.meas_gate_leak = self.meas_gate_leak
 
-            try:
-                seg.load()
-            except FileNotFoundError:
-                pass
+            # try:
+            #     seg.load()
+            # except FileNotFoundError:
+            #     pass
 
     def close(self):
         # overwrite default close() so that this closes all of the individual wires as well
@@ -331,11 +342,11 @@ class ArrayFET(Instrument):
         self.gate.microd_to_dac()
         self.drain.microd_to_bus()
 
-        self.sources[j].voltage(0.0)
+        self.sources[i].voltage(0.0)
         self.sources[i].microd_to_dac()
 
         # float the other sources
-        for j in [n for n in range(0,4) if n!=i]:
+        for j in [k for k in range(len(self.sources)) if k!=i]:
             self.sources[j].voltage(0.0)
             self.sources[j].microd_float()
 
@@ -344,11 +355,13 @@ class ArrayFET(Instrument):
         self.sources[i].voltage(0.0)
         self.sources[i].microd_float()
 
+        self.drain.terminate()
+
     def disconnect(self):
 
         self.drain.terminate()
 
-        for j in range(0,4):
+        for j in range(len(self.sources)):
             self.sources[j].voltage(0.0)
             self.sources[j].terminate()
 
@@ -373,6 +386,7 @@ class ArrayFET(Instrument):
         if not listener_is_running():
             start_listener()
 
+        self._mdac.bus('close')
         if self._volt:
             volt_set = self._volt
             self.drain.terminate()
@@ -387,8 +401,8 @@ class ArrayFET(Instrument):
             self.gate.microd_to_dac()
 
         run_id, vmax = _meas_gate_leak(volt_set, self._current, self.gate_step_coarse,
-                                       self.gate._get_maxlimit(), self.gate_delay,
-                                       di_limit=seg0.leakage_threshold(), compliance=0.5e-9)
+                                       5.0, self.gate_delay,
+                                       di_limit=seg0.leakage_threshold(), compliance=1e-9)
 
 
         for seg in self.segments:
@@ -401,8 +415,10 @@ class ArrayFET(Instrument):
 
             # adjust limits
             seg.V_open(min(seg.gate_max.val(), seg.V_open()))
-            seg.gate._set_limits(minlimit=seg.gate_min.val(), maxlimit=seg.gate_max.val())
+            if seg.V_open() < 0.1:
+                seg.V_open(0.0)
 
+            seg.gate._set_limits(minlimit=seg.gate_min.val(), maxlimit=seg.gate_max.val())
             if vmax < 0.5:
                 seg.gate.failed(True)
 
@@ -410,6 +426,21 @@ class ArrayFET(Instrument):
 
         return run_id
 
+    def label_bad_contacts(self):
+
+        out = []
+        for seg in self.segments:
+
+            cn = seg.source.chip_number()
+            R = seg.R_open.val()
+            passed = (R < 2e6) and (R > 0)
+            out.append((cn, passed))
+            if passed:
+                seg.source.failed(False)
+            else:
+                seg.source.failed(True)
+
+        return out
 
 
 class SingleFET(Instrument):
@@ -515,7 +546,7 @@ class SingleFET(Instrument):
                         label='Gate Leakage Threshold',
                         unit='A',
                         set_cmd=None,
-                        initial_value=400e-12)
+                        initial_value=1e-9)
         self.add_parameter('gate_threshold',
                         label='Cutoff For Useful Gates',
                         unit='V',
@@ -671,7 +702,7 @@ class SingleFET(Instrument):
 
         run_id, vmax = _meas_gate_leak(volt_set, self._current, self.gate_step_coarse,
                                        self.gate._get_maxlimit(), self.gate_delay,
-                                       di_limit=self.leakage_threshold(), compliance=0.5-9)
+                                       di_limit=self.leakage_threshold(), compliance=1e-9)
 
         # record results
         self.gate_leak_runid.append(run_id)
@@ -682,8 +713,10 @@ class SingleFET(Instrument):
 
         # adjust limits
         self.V_open(min(self.gate_max.val(), self.V_open()))
-        self.gate._set_limits(minlimit=self.gate_min.val(), maxlimit=self.gate_max.val())
+        if self.V_open() < 0.1:
+            self.V_open(0.0)
 
+        self.gate._set_limits(minlimit=self.gate_min.val(), maxlimit=self.gate_max.val())
         if vmax < 0.5:
             self.gate.failed(True)
 
@@ -692,7 +725,7 @@ class SingleFET(Instrument):
         return run_id
 
     def meas_connectivity(self, overwrite = False):
-        ''' test pairs of contacts to see what is connected '''
+        ''' test contacts '''
 
         if (overwrite==False) and (self.R_open.val() is not None):
             run_id = self.R_open.run_id()
@@ -702,6 +735,10 @@ class SingleFET(Instrument):
         self.gate.voltage(self.V_open())
 
         xarray = gen_sweep_array(-0.025, 0.025, num=251)
+        self.source.voltage.step = 0.001
+        self.source.voltage.inter_delay = 0.01
+        self.source.voltage(xarray[0])
+        time.sleep(0.15)
         run_id = do1d(self.source.voltage, xarray, 0.05, self._current)
 
         dd = get_data_from_ds(run_id, self._current.name, dtype='numpy')
@@ -714,10 +751,6 @@ class SingleFET(Instrument):
         self.R_open.val(R)
         self.R_open.run_id(run_id)
         self.iv_runid.append(run_id)
-
-        if (R > self.resistance_threshold()) or (R < 0):
-            self.source.failed(True)
-            self.drain.failed(True)
 
         self.save()
 
@@ -976,7 +1009,7 @@ class SingleFET(Instrument):
 
         if jstr != '':
 
-            jdict = parse_json_dump(jstr, device=self)
+            jdict = parse_json_dump(jstr, device=self, ignore_keys=['connect', 'disconnect'])
 
             if 'pin_map' in jdict:
                 self.pin_map = {int(k):v for k,v in self.pin_map.items()}
@@ -990,17 +1023,17 @@ class SingleFET(Instrument):
             # update a few limits/tags
             if self.gate_max.val() is not None:
                 self.V_open(min(self.gate_max.val(), self.V_open()))
+                if self.V_open() < 0.1:
+                    self.V_open(0.0)
+
                 if self.gate_max.val() < 0.5:
                     self.gate.failed(True)
+
 
                 if isinstance(self.gate, Gate):
                     self.gate._set_limits(maxlimit=self.gate_max.val())
                     self.gate._set_limits(minlimit=self.gate_min.val())
 
-            if self.R_open.val() is not None:
-                if (self.R_open.val() > 2e6) or (self.R_open.val() < 0):
-                    self.source.failed(True)
-                    self.drain.failed(True)
 
     def as_dataframe(self):
 
