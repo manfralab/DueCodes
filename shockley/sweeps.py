@@ -17,6 +17,48 @@ log = logging.getLogger(__name__)
 def is_monotonic(a):
     return (np.all(np.diff(a) > 0) or np.all(np.diff(a) < 0))
 
+def gen_sweep_array(start, stop, step=None, num=None):
+    """
+    Generate numbers over a specified interval.
+    Requires `start` and `stop` and (`step` or `num`)
+    The sign of `step` is not relevant.
+    Args:
+        start (Union[int, float]): The starting value of the sequence.
+        stop (Union[int, float]): The end value of the sequence.
+        step (Optional[Union[int, float]]):  Spacing between values.
+        num (Optional[int]): Number of values to generate.
+    Returns:
+        numpy.ndarray: numbers over a specified interval as a ``numpy.linspace``
+    Examples:
+        >>> make_sweep(0, 10, num=5)
+        [0.0, 2.5, 5.0, 7.5, 10.0]
+        >>> make_sweep(5, 10, step=1)
+        [5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+        >>> make_sweep(15, 10.5, step=1.5)
+        >[15.0, 13.5, 12.0, 10.5]
+    """
+    if step and num:
+        raise AttributeError('Don\'t use `step` and `num` at the same time.')
+    if (step is None) and (num is None):
+        raise ValueError('If you really want to go from `start` to '
+                         '`stop` in one step, specify `num=2`.')
+    if step is not None:
+        steps = abs((stop - start) / step)
+        tolerance = 1e-10
+        steps_lo = int(np.floor(steps + tolerance))
+        steps_hi = int(np.ceil(steps - tolerance))
+
+        if steps_lo != steps_hi:
+            real_step = abs((stop-start) / (steps_lo+1))
+            if abs(step - real_step)/step > 0.02:
+                # print a warning if the effective step size is more than 2% d
+                # different than what was requested
+                print('WARNING: Could not find an integer number of points for '
+                      'the the given `start`, `stop`, and `step`={0}.'
+                      ' Effective step size is `step`={1:.4f}'.format(step, real_step))
+        num = steps_lo + 1
+
+    return np.linspace(start, stop, num=num)
 
 ############
 ### TIME ###
@@ -62,7 +104,7 @@ def do1d(param_set, xarray, delay, *param_meas,
          send_grid=True, plot_logs=False, write_period=0.1):
 
     if not is_monotonic(xarray) and send_grid==True:
-        raise ValueError('xarray is not monotonic. This is going to break SQP plot.')
+        raise ValueError('xarray is not monotonic. This is going to break shockplot.')
 
     if not listener_is_running():
         start_listener()
@@ -110,7 +152,7 @@ def do1d_repeat_oneway(param_setx, xarray, delayx, num_repeats, delayy, *param_m
                        send_grid=True, plot_logs=False, write_period=0.1):
 
     if not is_monotonic(xarray):
-        raise ValueError('xarray is not monotonic. This is going to break SQP plot.')
+        raise ValueError('xarray is not monotonic. This is going to break shockplot.')
 
     if not listener_is_running():
         start_listener()
@@ -142,6 +184,7 @@ def do1d_repeat_oneway(param_setx, xarray, delayx, num_repeats, delayy, *param_m
         for i in range(num_repeats):
 
             y = param_county.get()
+            param_setx.set(xarray[0])
             time.sleep(delayy)
             for x in xarray:
                 param_setx.set(x)
@@ -159,7 +202,7 @@ def do1d_repeat_twoway(param_setx, xarray, delayx, num_repeats, delayy, *param_m
                        send_grid=True, plot_logs=False, write_period=0.1):
 
     if not is_monotonic(xarray):
-        raise ValueError('xarray is not monotonic. This is going to break SQP plot.')
+        raise ValueError('xarray is not monotonic. This is going to break shockplot.')
 
     if not listener_is_running():
         start_listener()
@@ -190,13 +233,15 @@ def do1d_repeat_twoway(param_setx, xarray, delayx, num_repeats, delayy, *param_m
 
         for i in range(num_repeats):
 
+
             y = param_county.get()
-            time.sleep(delayy)
             if y%2==0:
                 xsetpoints = xarray
             else:
                 xsetpoints = xarray[::-1]
 
+            param_setx.set(xsetpoints[0])
+            time.sleep(delayy)
             for x in xsetpoints:
                 param_setx.set(x)
                 time.sleep(delayx)
@@ -214,9 +259,9 @@ def do2d(param_setx, xarray, delayx,
          *param_meas, send_grid=True, plot_logs=False, write_period=0.1):
 
     if not is_monotonic(xarray):
-        raise ValueError('xarray is not monotonic. This is going to break SQP plot.')
+        raise ValueError('xarray is not monotonic. This is going to break shockplot.')
     elif not is_monotonic(yarray):
-        raise ValueError('yarray is not monotonic. This is going to break SQP plot.')
+        raise ValueError('yarray is not monotonic. This is going to break shockplot.')
 
     if not listener_is_running():
         start_listener()
@@ -247,9 +292,10 @@ def do2d(param_setx, xarray, delayx,
 
         for y in yarray:
             param_sety.set(y)
+            param_setx.set(xarray[0])
             time.sleep(delayy)
             for x in xarray:
-                param_set1.set(x)
+                param_setx.set(x)
                 time.sleep(delayx)
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
@@ -260,84 +306,3 @@ def do2d(param_setx, xarray, delayx,
         time.sleep(write_period) # let final data points propogate to plot
 
     return ds.run_id  # convenient to have for plotting
-
-# ###################
-# ### SPECIALIZED ###
-# ###################
-
-def gate_leak_check(volt_set, volt_limit, volt_step, delay, curr_dc, dc_curr_limit,
-                    curr_ac=None, plot_logs=False, write_period=0.1):
-
-    if not listener_is_running():
-        start_listener()
-
-    volt_limit = np.abs(volt_limit) # should be positive
-    volt_step = np.abs(volt_step) # same
-    dc_curr_limit = np.abs(dc_curr_limit) # one more
-
-    meas = Measurement()
-    meas.write_period = write_period
-
-    meas.register_parameter(volt_set)
-    volt_set.post_delay = 0
-
-    if curr_ac:
-        param_meas = [curr_dc, curr_ac]
-    else:
-        param_meas = [curr_dc]
-
-    output = []
-    for parameter in param_meas:
-        meas.register_parameter(parameter, setpoints=(volt_set,))
-        output.append([parameter, None])
-
-    with meas.run() as ds:
-
-        plot_subscriber = QCSubscriber(ds.dataset, volt_set, param_meas,
-                                       grid=None, log=plot_logs)
-        ds.dataset.subscribe(plot_subscriber)
-
-        for vg in np.arange(0, volt_limit, volt_step):
-            volt_set.set(vg)
-            time.sleep(delay)
-
-            for i, parameter in enumerate(param_meas):
-                output[i][1] = parameter.get()
-            ds.add_result((volt_set, vg),
-                          *output)
-
-            i_dc = output[0][1]
-            if np.abs(i_dc) > dc_curr_limit:
-                vmax = vg-volt_step # previous step was the limit
-                break
-            else:
-                vmax = vg
-
-        for vg in np.arange(vmax, -1*volt_limit, -1*volt_step):
-            volt_set.set(vg)
-            time.sleep(delay)
-
-            for i, parameter in enumerate(param_meas):
-                output[i][1] = parameter.get()
-            ds.add_result((volt_set, vg),
-                          *output)
-
-            i_dc = output[0][1]
-            if np.abs(i_dc) > dc_curr_limit:
-                vmin = vg+volt_step # previous step was the limit
-                break
-            else:
-                vmin = vg
-
-        for vg in np.arange(vmin, 0.0, volt_step):
-            volt_set.set(vg)
-            time.sleep(delay)
-
-            for i, parameter in enumerate(param_meas):
-                output[i][1] = parameter.get()
-            ds.add_result((volt_set, vg),
-                          *output)
-
-        time.sleep(write_period) # let final data points propogate to plot
-
-    return vmin, vmax # convenient to have for plotting

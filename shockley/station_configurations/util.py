@@ -24,4 +24,4 @@ def clear_station_instruments(station):
         try:
             station.close_and_remove_instrument(inst)
         except Exception as e:
-            print(e)
+            print(f'ERROR: {e}')

@@ -13,7 +13,7 @@ instruments:
   srs4:
     driver: qcodes.instrument_drivers.stanford_research.SR830
     type: SR830
-    address: GPIB0::4::INSTR
+    address: GPIB1::4::INSTR
     init:
         name: wally
     enable_forced_reconnect: true
@@ -21,7 +21,7 @@ instruments:
   srs7:
     driver: qcodes.instrument_drivers.stanford_research.SR830
     type: SR830
-    address: GPIB0::7::INSTR
+    address: GPIB1::7::INSTR
     init:
         name: dilbert
     enable_forced_reconnect: true
@@ -29,7 +29,7 @@ instruments:
   dmm24:
     driver: qcodes.instrument_drivers.agilent.Agilent_34400A
     type: Agilent_34400A
-    address: GPIB0::24::INSTR
+    address: GPIB1::24::INSTR
     init:
         name: curly
     enable_forced_reconnect: true
@@ -37,7 +37,7 @@ instruments:
   k2612:
     driver: qcodes.instrument_drivers.tektronix.Keithley_2600_channels
     type: Keithley_2600
-    address: GPIB0::26::INSTR
+    address: GPIB1::26::INSTR
     init:
         name: osiris
     enable_forced_reconnect: true
