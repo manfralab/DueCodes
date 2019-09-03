@@ -321,8 +321,8 @@ class ArrayFET(Instrument):
             del seg.submodules['gate']
             seg.add_submodule('gate', self.gate)
 
-            seg.connect = lambda: self._connect_segment(i)
-            seg.disconnect = lambda: self._disconnect_segment(i)
+            # seg.connect = lambda: self._connect_segment(i)
+            # seg.disconnect = lambda: self._disconnect_segment(i)
             seg.meas_gate_leak = self.meas_gate_leak
 
             # try:
@@ -338,10 +338,15 @@ class ArrayFET(Instrument):
 
         super().close()
 
-    def _connect_segment(self, i):
+    def _connect_segment(self, i, verbose=True):
 
-        # should already be connected
-        self.gate.microd_to_dac()
+        if verbose:
+            print(f'Connect {self.segments[i].name}: '
+                  f'{self.gate.chip_number()} to DAC, '
+                  f'{self.drain.chip_number()} to BUS, '
+                  f'{self.sources[i].chip_number()} to DAC.')
+
+        self.gate.microd_to_dac() # should already be connected
         self.drain.microd_to_bus()
 
         self.sources[i].voltage(0.0)

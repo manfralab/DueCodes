@@ -183,7 +183,13 @@ class HallBar(Instrument):
 
         super().close()
 
-    def _connect_segment(self, i):
+    def _connect_segment(self, i, verbose=True):
+
+        if verbose:
+            print(f'Connect {self.segments[i].name}: '
+                  f'{self.gate.chip_number()} to DAC, '
+                  f'{self.segments[i].drain.chip_number()} to BUS, '
+                  f'{self.segments[i].source.chip_number()} to DAC.')
 
         self.gate.microd_to_dac() # should already be connected
 
