@@ -5,7 +5,7 @@ import shockley
 
 yaml_lookup = {
     'BlueFors': 'BFXLD1.yaml',
-    '4K magnet': 'oxford_4K_magnet_station.yaml',
+    '4K_magnet': 'oxford_4K_magnet_station.yaml',
 }
 
 def get_station_config_path(system_name):

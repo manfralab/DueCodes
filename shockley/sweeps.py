@@ -8,8 +8,7 @@ import logging
 import qcodes as qc
 from qcodes.dataset.measurements import Measurement
 import numpy as np
-from shockplot import start_listener, listener_is_running
-from shockplot.qcodes_dataset import QCSubscriber
+from qchart import start_listener, listener_is_running
 from .drivers.parameters import TimerParam, CounterParam
 
 log = logging.getLogger(__name__)
@@ -50,7 +49,7 @@ def gen_sweep_array(start, stop, step=None, num=None):
 
         if steps_lo != steps_hi:
             real_step = abs((stop-start) / (steps_lo+1))
-            if abs(step - real_step)/step > 0.02:
+            if abs(step - real_step)/step > 0.05:
                 # print a warning if the effective step size is more than 2% d
                 # different than what was requested
                 print('WARNING: Could not find an integer number of points for '
@@ -60,11 +59,21 @@ def gen_sweep_array(start, stop, step=None, num=None):
 
     return np.linspace(start, stop, num=num)
 
+
 ############
 ### TIME ###
 ############
 
-def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.10):
+
+def readvstime(
+    delay, timeout, *param_meas,
+    plot_logs=False, write_period=0.50
+):
+
+    if not listener_is_running():
+        start_listener()
+        time.sleep(0.25)
+
     meas = Measurement()
     meas.write_period = write_period
 
@@ -78,10 +87,6 @@ def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.10):
 
     with meas.run() as ds:
 
-        plot_subscriber = QCSubscriber(ds.dataset, timer, param_meas,
-                                       grid=None, log=plot_logs)
-        ds.dataset.subscribe(plot_subscriber)
-
         while True:
             time.sleep(delay)
             t = timer.get()
@@ -94,20 +99,22 @@ def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.10):
                 break
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds.run_id  # convenient to have for plotting
+    return ds
+
 
 ############
 ### doND ###
 ############
 
-def do1d(param_set, xarray, delay, *param_meas,
-         send_grid=True, plot_logs=False, write_period=0.1):
 
-    if not is_monotonic(xarray) and send_grid==True:
-        raise ValueError('xarray is not monotonic. This is going to break shockplot.')
+def do1d(
+    param_set, xarray, delay, *param_meas,
+    plot_logs=False, write_period=0.50
+):
 
     if not listener_is_running():
         start_listener()
+        time.sleep(0.25)
 
     meas = Measurement()
     meas.write_period = write_period
@@ -122,15 +129,6 @@ def do1d(param_set, xarray, delay, *param_meas,
 
     with meas.run() as ds:
 
-        if send_grid:
-            grid = [xarray]
-        else:
-            grid = None
-
-        plot_subscriber = QCSubscriber(ds.dataset, param_set, param_meas,
-                                       grid=grid, log=plot_logs)
-        ds.dataset.subscribe(plot_subscriber)
-
         param_set.set(xarray[0])
         time.sleep(0.5)
 
@@ -140,22 +138,24 @@ def do1d(param_set, xarray, delay, *param_meas,
             for i, parameter in enumerate(param_meas):
                 output[i][1] = parameter.get()
 
-            ds.add_result((param_set, x),
-                                 *output)
+            ds.add_result(
+                (param_set, x),
+                *output
+            )
 
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds.run_id  # convenient to have for plotting
+    return ds
 
-# do1d repeat 1 way
-def do1d_repeat_oneway(param_setx, xarray, delayx, num_repeats, delayy, *param_meas,
-                       send_grid=True, plot_logs=False, write_period=0.1):
 
-    if not is_monotonic(xarray):
-        raise ValueError('xarray is not monotonic. This is going to break shockplot.')
+def do1d_repeat_oneway(
+    param_setx, xarray, delayx, num_repeats, delayy, *param_meas,
+    plot_logs=False, write_period=0.50
+):
 
     if not listener_is_running():
         start_listener()
+        time.sleep(0.25)
 
     meas = Measurement()
     meas.write_period = write_period
@@ -171,15 +171,6 @@ def do1d_repeat_oneway(param_setx, xarray, delayx, num_repeats, delayy, *param_m
         output.append([parameter, None])
 
     with meas.run() as ds:
-
-        if send_grid:
-            grid = [xarray, np.arange(num_repeats)]
-        else:
-            grid = None
-
-        plot_subscriber = QCSubscriber(ds.dataset, [param_setx, param_county], param_meas,
-                                           grid=grid, log=plot_logs)
-        ds.dataset.subscribe(plot_subscriber)
 
         for i in range(num_repeats):
 
@@ -191,21 +182,24 @@ def do1d_repeat_oneway(param_setx, xarray, delayx, num_repeats, delayy, *param_m
                 time.sleep(delayx)
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
-                ds.add_result((param_setx, x),
-                              (param_county, y),
-                              *output)
+                ds.add_result(
+                    (param_setx, x),
+                    (param_county, y),
+                    *output
+                )
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds.run_id  # convenient to have for plotting
+    return ds
 
-def do1d_repeat_twoway(param_setx, xarray, delayx, num_repeats, delayy, *param_meas,
-                       send_grid=True, plot_logs=False, write_period=0.1):
 
-    if not is_monotonic(xarray):
-        raise ValueError('xarray is not monotonic. This is going to break shockplot.')
+def do1d_repeat_twoway(
+    param_setx, xarray, delayx, num_repeats, delayy, *param_meas,
+    plot_logs=False, write_period=0.50
+):
 
     if not listener_is_running():
         start_listener()
+        time.sleep(0.25)
 
     meas = Measurement()
     meas.write_period = write_period
@@ -217,22 +211,14 @@ def do1d_repeat_twoway(param_setx, xarray, delayx, num_repeats, delayy, *param_m
 
     output = []
     for parameter in param_meas:
-        meas.register_parameter(parameter, setpoints=(param_setx, param_county))
+        meas.register_parameter(
+            parameter, setpoints=(param_setx, param_county)
+        )
         output.append([parameter, None])
 
     with meas.run() as ds:
 
-        if send_grid:
-            grid = [xarray, np.arange(num_repeats)]
-        else:
-            grid = None
-
-        plot_subscriber = QCSubscriber(ds.dataset, [param_setx, param_county], param_meas,
-                                           grid=grid, log=plot_logs)
-        ds.dataset.subscribe(plot_subscriber)
-
         for i in range(num_repeats):
-
 
             y = param_county.get()
             if y%2==0:
@@ -247,24 +233,25 @@ def do1d_repeat_twoway(param_setx, xarray, delayx, num_repeats, delayy, *param_m
                 time.sleep(delayx)
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
-                ds.add_result((param_setx, x),
-                              (param_county, y),
-                              *output)
+                ds.add_result(
+                    (param_setx, x),
+                    (param_county, y),
+                    *output
+                )
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds.run_id  # convenient to have for plotting
+    return ds
 
-def do2d(param_setx, xarray, delayx,
-         param_sety, yarray, delayy,
-         *param_meas, send_grid=True, plot_logs=False, write_period=0.1):
-
-    if not is_monotonic(xarray):
-        raise ValueError('xarray is not monotonic. This is going to break shockplot.')
-    elif not is_monotonic(yarray):
-        raise ValueError('yarray is not monotonic. This is going to break shockplot.')
+def do2d(
+    param_setx, xarray, delayx,
+    param_sety, yarray, delayy,
+    *param_meas,
+    plot_logs=False, write_period=0.50
+):
 
     if not listener_is_running():
         start_listener()
+        time.sleep(0.25)
 
     meas = Measurement()
     meas.write_period = write_period
@@ -276,19 +263,12 @@ def do2d(param_setx, xarray, delayx,
 
     output = []
     for parameter in param_meas:
-        meas.register_parameter(parameter, setpoints=(param_setx, param_sety))
+        meas.register_parameter(
+            parameter, setpoints=(param_setx, param_sety)
+        )
         output.append([parameter, None])
 
     with meas.run() as ds:
-
-        if send_grid:
-            grid = [xarray, yarray]
-        else:
-            grid = None
-
-        plot_subscriber = QCSubscriber(ds.dataset, [param_setx, param_sety], param_meas,
-                                           grid=grid, log=plot_logs)
-        ds.dataset.subscribe(plot_subscriber)
 
         for y in yarray:
             param_sety.set(y)
@@ -299,10 +279,12 @@ def do2d(param_setx, xarray, delayx,
                 time.sleep(delayx)
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
-                ds.add_result((param_setx, x),
-                              (param_sety, y),
-                              *output)
+                ds.add_result(
+                    (param_setx, x),
+                    (param_sety, y),
+                    *output
+                )
 
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds.run_id  # convenient to have for plotting
+    return ds
