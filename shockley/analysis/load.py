@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from qcodes import load_by_id, load_by_guid
 from qcodes.dataset.guids import validate_guid_format
+from .math import xy_to_meshgrid
 
 
 def get_dataset_by_identifier(identifier: Union[int, str]):
@@ -24,25 +25,6 @@ def list_measured_params(identifier):
     dataset = get_dataset_by_identifier(identifier)
     dependent_param_list = [param.name for param in dataset.dependent_parameters]
     return dependent_param_list
-
-
-def xy_to_meshgrid(xrow, yrow):
-    # stolen from qcodes.dataset.plotting
-    # we use a general edge calculator,
-    # in the case of non-equidistantly spaced data
-    # TODO: is this appropriate for a log ax?
-
-    dxs = np.diff(xrow)/2
-    dys = np.diff(yrow)/2
-
-    x_edges = np.concatenate((np.array([xrow[0] - dxs[0]]),
-                              xrow[:-1] + dxs,
-                              np.array([xrow[-1] + dxs[-1]])))
-    y_edges = np.concatenate((np.array([yrow[0] - dys[0]]),
-                              yrow[:-1] + dys,
-                              np.array([yrow[-1] + dys[-1]])))
-
-    return np.meshgrid(x_edges, y_edges)
 
 
 def dataframe_to_arrays(
