@@ -1,4 +1,4 @@
-from typing import Optional, Collections, Union
+from typing import Optional, Collection, Union
 from qcodes import load_by_id, load_by_guid
 # from qcodes.dataset.plotting import plot_by_id
 # from qcodes.dataset.data_export import get_data_by_id, get_1D_plottype, get_2D_plottype, \
