@@ -89,14 +89,3 @@ def get_data_as_dataframe(
         vals = dataset.get_values(param)
         data[param] = np.array(vals).flatten()
     return pd.DataFrame(data, index=multi_index)
-
-
-def get_data_as_arrays(
-    identifier: Union[int, str],
-    dependent_params: List[str] = None,
-    meshgrid: bool = False
-):
-
-    df = get_data_as_dataframe(identifier, dependent_params)
-
-    return dataframe_to_arrays(df, meshgrid=meshgrid)
