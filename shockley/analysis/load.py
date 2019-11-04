@@ -1,6 +1,7 @@
-from typing import Optional, Collection, Union
+from typing import Optional, List, Union
 import numpy as np
 import pandas as pd
+import xarray as xr
 from qcodes import load_by_id, load_by_guid
 from qcodes.dataset.guids import validate_guid_format
 from .math import xy_to_meshgrid
@@ -27,40 +28,32 @@ def list_measured_params(identifier):
     return dependent_param_list
 
 
-def dataframe_to_arrays(
-    dataframe: pd.DataFrame,
-    dependent_params: Collection[str] = None,
-    meshgrid: bool = False
+def dataframe_to_xarray(df):
+    """
+    Convert pandas DataFrame with MultiIndex to an xarray DataSet.
+    """
+
+    arr = xr.Dataset(df)
+    arr = arr.unstack('dim_0')
+
+    return arr.transpose() # axes ordered fast -> slow (most of the time)
+
+
+def get_data_as_xarray(
+    identifier: Union[int, str],
+    dependent_params: List[str] = None
 ):
 
-    if dependent_params is None:
-        dependent_params = list(dataframe.columns)
-
-    setpoints = tuple(
-        level.values for level in dataframe.index.levels
+    df = get_data_as_dataframe(
+        identifier,
+        dependent_params=dependent_params
     )
-    data_shape = tuple(len(array) for array in setpoints)
-
-    if len(data_shape) == 1:
-        data = [
-            dataframe[param].values for param in dependent_params
-        ]
-    elif len(data_shape) == 2:
-        data_shape = data_shape[::-1] # feels wrong. looks right.
-        data = [
-            dataframe[param].values.reshape(data_shape) for param in dependent_params
-        ]
-        if meshgrid:
-            setpoints = tuple(xy_to_meshgrid(*setpoints))
-    else:
-        raise NotImplementedError('Cannot convert to numpy array if index has more than 2 levels')
-
-    return (*setpoints, data)
+    return dataframe_to_xarray(df)
 
 
 def get_data_as_dataframe(
     identifier: Union[int, str],
-    dependent_params: Collection[str] = None
+    dependent_params: List[str] = None
 ):
 
     dataset = get_dataset_by_identifier(identifier) # load dataset
@@ -100,7 +93,7 @@ def get_data_as_dataframe(
 
 def get_data_as_arrays(
     identifier: Union[int, str],
-    dependent_params: Collection[str] = None,
+    dependent_params: List[str] = None,
     meshgrid: bool = False
 ):
 
