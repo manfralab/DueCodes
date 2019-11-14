@@ -9,7 +9,7 @@ import logging
 from warnings import warn
 from qcodes import VisaInstrument
 from qcodes import validators as val
-from .Kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
+from .kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
 
 log = logging.getLogger(__name__)
 
