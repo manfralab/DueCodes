@@ -5,16 +5,16 @@ and relies on sqpplot for plotting.
 
 import time
 import logging
-import qcodes as qc
-from qcodes.dataset.measurements import Measurement
 import numpy as np
+from qcodes.dataset.measurements import Measurement
 from qchart import start_listener, listener_is_running
-from .drivers.parameters import TimerParam, CounterParam
+from shockley.drivers.parameters import TimerParam, CounterParam
 
-log = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
-def is_monotonic(a):
-    return (np.all(np.diff(a) > 0) or np.all(np.diff(a) < 0))
+def is_monotonic(arr):
+    """ check if array is monotonic """
+    return np.all(np.diff(arr) > 0) or np.all(np.diff(arr) < 0)
 
 def gen_sweep_array(start, stop, step=None, num=None):
     """

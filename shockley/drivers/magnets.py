@@ -7,11 +7,10 @@ calibration information as attributes
 
 import logging
 from warnings import warn
-from qcodes import VisaInstrument
-from qcodes import validators as val
-from .Kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
+from qcodes import validators as vals
+from shockley.drivers.Kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
 
-log = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 class Oxford5TMagnet(Kepco_BOP10_100GL):
     """
@@ -35,7 +34,7 @@ class Oxford5TMagnet(Kepco_BOP10_100GL):
                            unit='T',
                            get_cmd=self._get_field,
                            set_cmd=self._set_field,
-                           vals=val.Numbers(-1*self.max_field, self.max_field),
+                           vals=vals.Numbers(-1*self.max_field, self.max_field),
                            step=self.min_field_step,
                            docstring="get/set B-field in T")
 
@@ -44,7 +43,7 @@ class Oxford5TMagnet(Kepco_BOP10_100GL):
                            unit='mT/min',
                            set_cmd=self._set_ramp_rate,
                            get_cmd=self._get_ramp_rate,
-                           vals=val.Numbers(0, 200),
+                           vals=vals.Numbers(0, 200),
                            initial_value=self._ramp_rate,
                            docstring="get/set ramp_rate in mT/s")
 

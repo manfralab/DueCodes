@@ -1,6 +1,5 @@
 import numpy as np
 
-
 def xy_to_meshgrid(xrow, yrow):
     # stolen from qcodes.dataset.plotting
     # we use a general edge calculator,
@@ -18,7 +17,7 @@ def xy_to_meshgrid(xrow, yrow):
                               np.array([yrow[-1] + dys[-1]])))
 
     return np.meshgrid(x_edges, y_edges)
-    
+
 
 def moving_avg(x, y, avgs, axis = None) :
 
