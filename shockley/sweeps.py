@@ -88,18 +88,23 @@ def readvstime(
     with meas.run() as ds:
 
         while True:
+
             time.sleep(delay)
-            t = timer.get()
+            t_now = timer.get()
+
             for i, parameter in enumerate(param_meas):
                 output[i][1] = parameter.get()
 
-            ds.add_result((timer, t),
-                                 *output)
-            if(t>timeout):
+            ds.add_result(
+                (timer, t_now),
+                *output
+            )
+
+            if t_now > timeout:
                 break
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds
+    return ds.dataset
 
 
 ############
@@ -145,7 +150,7 @@ def do1d(
 
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds
+    return ds.dataset
 
 
 def do1d_repeat_oneway(
@@ -189,7 +194,7 @@ def do1d_repeat_oneway(
                 )
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds
+    return ds.dataset
 
 
 def do1d_repeat_twoway(
@@ -240,7 +245,7 @@ def do1d_repeat_twoway(
                 )
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds
+    return ds.dataset
 
 def do2d(
     param_setx, xarray, delayx,
@@ -287,4 +292,4 @@ def do2d(
 
         time.sleep(write_period) # let final data points propogate to plot
 
-    return ds
+    return ds.dataset
