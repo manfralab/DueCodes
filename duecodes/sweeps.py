@@ -8,7 +8,7 @@ import logging
 import numpy as np
 from qcodes.dataset.measurements import Measurement
 from qchart import start_listener, listener_is_running
-from shockley.drivers.parameters import TimerParam, CounterParam
+from duecodes.drivers.parameters import TimerParam, CounterParam
 
 LOGGER = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@
 instruments:
 
   mdac:
-    driver: shockley.drivers.MDAC.extMDAC
+    driver: duecodes.drivers.MDAC.extMDAC
     type: MDAC
     address: 'ASRL3::INSTR'
     init:

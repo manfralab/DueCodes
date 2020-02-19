@@ -8,7 +8,7 @@ calibration information as attributes
 import logging
 from warnings import warn
 from qcodes import validators as vals
-from shockley.drivers.Kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
+from duecodes.drivers.Kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
 
 LOGGER = logging.getLogger(__name__)
 
