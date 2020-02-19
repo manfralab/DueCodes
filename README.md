@@ -1,5 +1,5 @@
 # shockley
 
-`qcodes` measurement scripts and instrument drivers at Station Q Purdue
+`qcodes` measurement scripts and instrument drivers at Station Q Purdue. (Pur)Due(Q)Codes
 
-See `shockley/docs` for usage examples.
+See `duecodes/docs` for usage examples.
