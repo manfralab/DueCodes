@@ -148,19 +148,6 @@ class PS120(VisaInstrument):
                            set_cmd=self._set_sweeprate_field,
                            vals=vals.Numbers(0, 0.5))
 
-        # unused parameters
-        # self.add_parameter('amps_per_tesla',
-        #                     initial_value=10.0,
-        #                     unit='A/T',
-        #                     vals=vals.Numbers(0,25.0))
-        # self.add_parameter('polarity',
-        #                    get_cmd=self._get_polarity)
-        # self.add_parameter('voltage',
-        #                    unit='V',
-        #                    get_cmd=self._get_voltage)
-        # self.add_parameter('voltage_limit',
-        #                    unit='V',
-        #                    get_cmd=self._get_voltage_limit)
         self.add_parameter('current',
                            unit='A',
                            get_cmd=self._get_current)
@@ -170,38 +157,12 @@ class PS120(VisaInstrument):
         self.add_parameter('current_setpoint',
                            unit='A',
                            get_cmd=self._get_current_setpoint)
-                           # set_cmd=self._set_current_setpoint,
-                           # vals=vals.Numbers(-120.0,120.0))
         self.add_parameter('sweeprate_current',
                            unit='A/min',
                            get_cmd=self._get_sweeprate_current)
-        #                    set_cmd=self._set_sweeprate_current,
-        #                    vals=vals.Numbers(0,3.0))
         self.add_parameter('persistent_current',
                            unit='A',
                            get_cmd=self._get_persistent_current)
-        # self.add_parameter('persistent_field',
-        #                    unit='T',
-        #                    get_cmd=self._get_persistent_field)
-        # self.add_parameter('magnet_inductance',
-        #                    unit='H',
-        #                    get_cmd=self._get_magnet_inductance)
-        # self.add_parameter('lead_resistance',
-        #                    unit='mOhm',
-        #                    get_cmd=self._get_lead_resistance)
-        # self.add_parameter('current_limit_lower',
-        #                    unit='A',
-        #                    get_cmd=self._get_current_limit_lower)
-        # self.add_parameter('current_limit_upper',
-        #                    unit='A',
-        #                    get_cmd=self._get_current_limit_upper)
-
-        # self.add_parameter('trip_field',
-        #                    unit='T',
-        #                    get_cmd=self._get_trip_field)
-        # self.add_parameter('trip_current',
-        #                    unit='A',
-        #                    get_cmd=self._get_trip_current)
 
         # setup RS232 communication
         self.visa_handle.set_visa_attribute(
@@ -360,17 +321,6 @@ class PS120(VisaInstrument):
         result = self._execute('R0')
         return float(result.replace('R', ''))/100.0
 
-    # def _get_voltage(self):
-    #     """
-    #     Demand measured output voltage of device
-    #
-    #     Returns:
-    #         result (float) : output voltage in Volt
-    #     """
-    #     self.log.info('Read output voltage')
-    #     result = self._execute('R1')
-    #     return float(result.replace('R', ''))
-
     def _get_magnet_current(self):
         """
         Demand measured magnet current of device
@@ -393,19 +343,6 @@ class PS120(VisaInstrument):
         result = self._execute('R5')
         return float(result.replace('R', ''))/100.0
 
-    # def _set_current_setpoint(self, current):
-    #     """
-    #     Set current setpoint (target current)
-    #
-    #     Args:
-    #         current (float) : target current in Amp
-    #     """
-    #     self.log.info('Setting target current to %s' % current)
-    #     self.remote()
-    #     self._execute('I%s' % current)
-    #     self.local()
-    #     self.field_setpoint()
-
     def _get_sweeprate_current(self):
         """
         Return sweep rate (current)
@@ -415,18 +352,6 @@ class PS120(VisaInstrument):
         """
         result = self._execute('R6')
         return float(result.replace('R', ''))/100.0
-
-    # def _set_sweeprate_current(self, sweeprate):
-    #     """
-    #     Set sweep rate (current)
-    #
-    #     Args:
-    #         sweeprate(float) : Sweep rate in A/min.
-    #     """
-    #     self.remote()
-    #     self._execute('S%s' % sweeprate)
-    #     self.local()
-    #     self.sweeprate_field()
 
     def _get_field(self):
         """
@@ -483,19 +408,6 @@ class PS120(VisaInstrument):
         self.local()
         self.sweeprate_current()
 
-    # def _get_voltage_limit(self):
-    #     """
-    #     Return voltage limit
-    #
-    #     Returns:
-    #         result (float) : voltage limit in Volt
-    #     """
-    #     self.log.info('Read voltage limit')
-    #     result = self._execute('R15')
-    #     result = float(result.replace('R', ''))
-    #     self.voltage.vals = vals.Numbers(-result, result)
-    #     return result
-
     def _get_persistent_current(self):
         """
         Return persistent magnet current
@@ -507,39 +419,6 @@ class PS120(VisaInstrument):
         result = self._execute('R16')
         return float(result.replace('R', ''))/100.0
 
-    # def _get_trip_current(self):
-    #     """
-    #     Return trip current
-    #
-    #     Returns:
-    #         result (float) : trip current om Amp
-    #     """
-    #     self.log.info('Read trip current')
-    #     result = self._execute('R17')
-    #     return float(result.replace('R', ''))
-    #
-    # def _get_persistent_field(self):
-    #     """
-    #     Return persistent magnet field
-    #
-    #     Returns:
-    #         result (float) : persistent magnet field in Tesla
-    #     """
-    #     self.log.info('Read persistent magnet field')
-    #     result = self._execute('R18')
-    #     return float(result.replace('R', ''))
-    #
-    # def _get_trip_field(self):
-    #     """
-    #     Return trip field
-    #
-    #     Returns:
-    #         result (float) : trip field in Tesla
-    #     """
-    #     self.log.info('Read trip field')
-    #     result = self._execute('R19')
-    #     return float(result.replace('R', ''))
-
     def _get_heater_current(self):
         """
         Return switch heater current
@@ -550,50 +429,6 @@ class PS120(VisaInstrument):
         self.log.info('Read switch heater current')
         result = self._execute('R20')
         return float(result.replace('R', ''))
-
-    # def _get_current_limit_upper(self):
-    #     """
-    #     Return safe current limit, most positive
-    #
-    #     Returns:
-    #         result (float) : safe current limit, most positive in Amp
-    #     """
-    #     self.log.info('Read safe current limit, most positive')
-    #     result = self._execute('R22')
-    #     return float(result.replace('R', ''))
-
-    # def _get_current_limit_lower(self):
-    #     """
-    #     Return safe current limit, most negative
-    #
-    #     Returns:
-    #         result (float) : safe current limit, most negative in Amp
-    #     """
-    #     self.log.info('Read safe current limit, most negative')
-    #     result = self._execute('R21')
-    #     return float(result.replace('R', ''))
-
-    # def _get_lead_resistance(self):
-    #     """
-    #     Return lead resistance
-    #
-    #     Returns:
-    #         result (float) : lead resistance in milliOhm
-    #     """
-    #     self.log.info('Read lead resistance')
-    #     result = self._execute('R23')
-    #     return float(result.replace('R', ''))
-
-    # def _get_magnet_inductance(self):
-    #     """
-    #     Return magnet inductance
-    #
-    #     Returns:
-    #         result (float) : magnet inductance in Henry
-    #     """
-    #     self.log.info('Read magnet inductance')
-    #     result = self._execute('R24')
-    #     return float(result.replace('R', ''))
 
     def _get_activity(self):
         """
@@ -658,76 +493,6 @@ class PS120(VisaInstrument):
         print("Setting switch heater... (wait 20s)")
         self.local()
         time.sleep(20)
-
-    # def heater_on(self):
-    #     """Switch the heater on, with PSU = Magnet current check"""
-    #     current_in_magnet = self.persistent_current()
-    #     current_in_leads = self.current()
-    #     if self.switch_heater() == self._GET_STATUS_SWITCH_HEATER[1]:
-    #         print('Heater is already on!')
-    #     else:
-    #         if self.ramp_status() == self._GET_STATUS_RAMP[0]:
-    #             if current_in_leads == current_in_magnet:
-    #                 self.switch_heater('on')
-    #             else:
-    #                 print('Current in the leads is not matching persistent current!')
-    #         else:
-    #             print('Magnet supply not at rest, cannot switch on heater!')
-    #     self.switch_heater()
-
-    # def heater_off(self):
-    #     """Switch the heater off"""
-    #     if (self.switch_heater() == self._GET_STATUS_SWITCH_HEATER[0] or
-    #             self.switch_heater() == self._GET_STATUS_SWITCH_HEATER[2]):
-    #         print('Heater is already off!')
-    #     else:
-    #         if self.ramp_status() == self._GET_STATUS_RAMP[0]:
-    #             self.switch_heater(0)
-    #         else:
-    #             print('Magnet is not at rest, cannot switch of the heater!')
-
-    # def set_persistent(self):
-    #     """
-    #     Puts magnet into persistent mode
-    #
-    #     Note: After turning of the switch heater we will wait for additional 20
-    #     seconds before we put the current to zero. This is done to make sure
-    #     that the switch heater is cold enough and becomes superconducting.
-    #     """
-    #     if self.ramp_status() == self._GET_STATUS_RAMP[0]:
-    #         self.heater_off()
-    #         print('Waiting for the switch heater to become superconducting')
-    #         time.sleep(20)
-    #         self.to_zero()
-    #         self.get_all()
-    #     else:
-    #         print('Magnet is not at rest, cannot put it in persistent mode')
-    #     self.get_all()
-
-    # def leave_persistent_mode(self):
-    #     """
-    #     Read out persistent current, match the current in the leads to that current
-    #     and switch on heater
-    #     """
-    #     if self.switch_heater() == self._GET_STATUS_SWITCH_HEATER[2]:
-    #         field_in_magnet = self.persistent_field()
-    #         field_in_leads = self.field()
-    #         self.hold()
-    #         self.field_setpoint(field_in_magnet)
-    #         self.to_setpoint()
-    #
-    #         while field_in_leads != field_in_magnet:
-    #             field_in_leads = self.field()
-    #         self.heater_on()
-    #         self.hold()
-    #
-    #     elif self.switch_heater() == self._GET_STATUS_SWITCH_HEATER[1]:
-    #         print('Heater is already on, so the magnet was not in persistent mode')
-    #     elif self.switch_heater() == self._GET_STATUS_SWITCH_HEATER[0]:
-    #         print('Heater is off, field is zero. Turning on switch heater.')
-    #         self.heater_on()
-    #
-    #     self.get_all()
 
     def run_to_field_non_blocking(self, field_value):
         """
@@ -798,15 +563,3 @@ class PS120(VisaInstrument):
             self.local()
         else:
             print('Invalid mode inserted.')
-
-    # def _get_polarity(self):
-    #     """
-    #     Get the polarity of the output current
-    #
-    #     Returns:
-    #         result (str): See _GET_POLARITY_STATUS1 and _GET_POLARITY_STATUS2.
-    #     """
-    #     self.log.info('Get device polarity')
-    #     result = self._execute('X')
-    #     return self._GET_POLARITY_STATUS1[int(result[13])] + \
-    #         ", " + self._GET_POLARITY_STATUS2[int(result[14])]
