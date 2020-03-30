@@ -1,7 +1,7 @@
-'''
+"""
 This module contains simple sweeps for measurements
 and relies on sqpplot for plotting.
-'''
+"""
 
 import time
 import logging
@@ -12,9 +12,11 @@ from duecodes.drivers.parameters import TimerParam, CounterParam
 
 LOGGER = logging.getLogger(__name__)
 
+
 def is_monotonic(arr):
     """ check if array is monotonic """
     return np.all(np.diff(arr) > 0) or np.all(np.diff(arr) < 0)
+
 
 def gen_sweep_array(start, stop, step=None, num=None):
     """
@@ -37,10 +39,12 @@ def gen_sweep_array(start, stop, step=None, num=None):
         >[15.0, 13.5, 12.0, 10.5]
     """
     if step and num:
-        raise AttributeError('Don\'t use `step` and `num` at the same time.')
+        raise AttributeError("Don't use `step` and `num` at the same time.")
     if (step is None) and (num is None):
-        raise ValueError('If you really want to go from `start` to '
-                         '`stop` in one step, specify `num=2`.')
+        raise ValueError(
+            "If you really want to go from `start` to "
+            "`stop` in one step, specify `num=2`."
+        )
     if step is not None:
         steps = abs((stop - start) / step)
         tolerance = 1e-10
@@ -48,13 +52,15 @@ def gen_sweep_array(start, stop, step=None, num=None):
         steps_hi = int(np.ceil(steps - tolerance))
 
         if steps_lo != steps_hi:
-            real_step = abs((stop-start) / (steps_lo+1))
-            if abs(step - real_step)/step > 0.05:
+            real_step = abs((stop - start) / (steps_lo + 1))
+            if abs(step - real_step) / step > 0.05:
                 # print a warning if the effective step size is more than 2% d
                 # different than what was requested
-                print('WARNING: Could not find an integer number of points for '
-                      'the the given `start`, `stop`, and `step`={0}.'
-                      ' Effective step size is `step`={1:.4f}'.format(step, real_step))
+                print(
+                    "WARNING: Could not find an integer number of points for "
+                    "the the given `start`, `stop`, and `step`={0}."
+                    " Effective step size is `step`={1:.4f}".format(step, real_step)
+                )
         num = steps_lo + 1
 
     return np.linspace(start, stop, num=num)
@@ -65,10 +71,7 @@ def gen_sweep_array(start, stop, step=None, num=None):
 ############
 
 
-def readvstime(
-    delay, timeout, *param_meas,
-    plot_logs=False, write_period=0.50
-):
+def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.50):
 
     if not listener_is_running():
         start_listener()
@@ -77,7 +80,7 @@ def readvstime(
     meas = Measurement()
     meas.write_period = write_period
 
-    timer = TimerParam('time')
+    timer = TimerParam("time")
     meas.register_parameter(timer)
 
     output = []
@@ -85,7 +88,7 @@ def readvstime(
         meas.register_parameter(pm, setpoints=(timer,))
         output.append([pm, None])
 
-    with meas.run() as ds:
+    with meas.run(write_in_background=True) as ds:
 
         while True:
 
@@ -95,14 +98,11 @@ def readvstime(
             for i, parameter in enumerate(param_meas):
                 output[i][1] = parameter.get()
 
-            ds.add_result(
-                (timer, t_now),
-                *output
-            )
+            ds.add_result((timer, t_now), *output)
 
             if t_now > timeout:
                 break
-        time.sleep(write_period) # let final data points propogate to plot
+        time.sleep(write_period)  # let final data points propogate to plot
 
     return ds.dataset
 
@@ -112,10 +112,7 @@ def readvstime(
 ############
 
 
-def do1d(
-    param_set, xarray, delay, *param_meas,
-    plot_logs=False, write_period=0.50
-):
+def do1d(param_set, xarray, delay, *param_meas, plot_logs=False, write_period=0.50):
 
     if not listener_is_running():
         start_listener()
@@ -132,7 +129,7 @@ def do1d(
         meas.register_parameter(pm, setpoints=(param_set,))
         output.append([pm, None])
 
-    with meas.run() as ds:
+    with meas.run(write_in_background=True) as ds:
 
         param_set.set(xarray[0])
         time.sleep(0.5)
@@ -143,19 +140,22 @@ def do1d(
             for i, parameter in enumerate(param_meas):
                 output[i][1] = parameter.get()
 
-            ds.add_result(
-                (param_set, x),
-                *output
-            )
+            ds.add_result((param_set, x), *output)
 
-        time.sleep(write_period) # let final data points propogate to plot
+        time.sleep(write_period)  # let final data points propogate to plot
 
     return ds.dataset
 
 
 def do1d_repeat_oneway(
-    param_setx, xarray, delayx, num_repeats, delayy, *param_meas,
-    plot_logs=False, write_period=0.50
+    param_setx,
+    xarray,
+    delayx,
+    num_repeats,
+    delayy,
+    *param_meas,
+    plot_logs=False,
+    write_period=0.50
 ):
 
     if not listener_is_running():
@@ -167,7 +167,7 @@ def do1d_repeat_oneway(
 
     meas.register_parameter(param_setx)
     param_setx.post_delay = 0
-    param_county = CounterParam('repeat')
+    param_county = CounterParam("repeat")
     meas.register_parameter(param_county)
 
     output = []
@@ -175,7 +175,7 @@ def do1d_repeat_oneway(
         meas.register_parameter(parameter, setpoints=(param_setx, param_county))
         output.append([parameter, None])
 
-    with meas.run() as ds:
+    with meas.run(write_in_background=True) as ds:
 
         for i in range(num_repeats):
 
@@ -187,19 +187,21 @@ def do1d_repeat_oneway(
                 time.sleep(delayx)
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
-                ds.add_result(
-                    (param_setx, x),
-                    (param_county, y),
-                    *output
-                )
-        time.sleep(write_period) # let final data points propogate to plot
+                ds.add_result((param_setx, x), (param_county, y), *output)
+        time.sleep(write_period)  # let final data points propogate to plot
 
     return ds.dataset
 
 
 def do1d_repeat_twoway(
-    param_setx, xarray, delayx, num_repeats, delayy, *param_meas,
-    plot_logs=False, write_period=0.50
+    param_setx,
+    xarray,
+    delayx,
+    num_repeats,
+    delayy,
+    *param_meas,
+    plot_logs=False,
+    write_period=0.50
 ):
 
     if not listener_is_running():
@@ -211,22 +213,20 @@ def do1d_repeat_twoway(
 
     meas.register_parameter(param_setx)
     param_setx.post_delay = 0
-    param_county = CounterParam('repeat')
+    param_county = CounterParam("repeat")
     meas.register_parameter(param_county)
 
     output = []
     for parameter in param_meas:
-        meas.register_parameter(
-            parameter, setpoints=(param_setx, param_county)
-        )
+        meas.register_parameter(parameter, setpoints=(param_setx, param_county))
         output.append([parameter, None])
 
-    with meas.run() as ds:
+    with meas.run(write_in_background=True) as ds:
 
         for i in range(num_repeats):
 
             y = param_county.get()
-            if y%2==0:
+            if y % 2 == 0:
                 xsetpoints = xarray
             else:
                 xsetpoints = xarray[::-1]
@@ -238,20 +238,22 @@ def do1d_repeat_twoway(
                 time.sleep(delayx)
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
-                ds.add_result(
-                    (param_setx, x),
-                    (param_county, y),
-                    *output
-                )
-        time.sleep(write_period) # let final data points propogate to plot
+                ds.add_result((param_setx, x), (param_county, y), *output)
+        time.sleep(write_period)  # let final data points propogate to plot
 
     return ds.dataset
 
+
 def do2d(
-    param_setx, xarray, delayx,
-    param_sety, yarray, delayy,
+    param_setx,
+    xarray,
+    delayx,
+    param_sety,
+    yarray,
+    delayy,
     *param_meas,
-    plot_logs=False, write_period=0.50
+    plot_logs=False,
+    write_period=0.50
 ):
 
     if not listener_is_running():
@@ -268,12 +270,10 @@ def do2d(
 
     output = []
     for parameter in param_meas:
-        meas.register_parameter(
-            parameter, setpoints=(param_setx, param_sety)
-        )
+        meas.register_parameter(parameter, setpoints=(param_setx, param_sety))
         output.append([parameter, None])
 
-    with meas.run() as ds:
+    with meas.run(write_in_background=True) as ds:
 
         for y in yarray:
             param_sety.set(y)
@@ -284,12 +284,8 @@ def do2d(
                 time.sleep(delayx)
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
-                ds.add_result(
-                    (param_setx, x),
-                    (param_sety, y),
-                    *output
-                )
+                ds.add_result((param_setx, x), (param_sety, y), *output)
 
-        time.sleep(write_period) # let final data points propogate to plot
+        time.sleep(write_period)  # let final data points propogate to plot
 
     return ds.dataset
