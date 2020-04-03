@@ -13,5 +13,10 @@ setup(
     ],
     license="MIT",
     packages=find_packages(),
-    python_requires=">=3",
+    python_requires=">=3.7",
+    install_requires=[
+        'matplotlib>=3.0.0',
+        'pandas>=0.22',
+        'xarray',
+    ],
 )
