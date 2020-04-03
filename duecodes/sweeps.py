@@ -4,16 +4,13 @@ and relies on sqpplot for plotting.
 """
 
 import time
-import logging
+from warnings import warn
 import numpy as np
 from qcodes.dataset.measurements import Measurement
-from qchart import start_listener, listener_is_running
-from duecodes.drivers.parameters import TimerParam, CounterParam
-
-LOGGER = logging.getLogger(__name__)
+from duecodes.drivers.parameters import CountParameter, ElapsedTimeParameter
 
 
-def is_monotonic(arr):
+def _is_monotonic(arr):
     """ check if array is monotonic """
     return np.all(np.diff(arr) > 0) or np.all(np.diff(arr) < 0)
 
@@ -31,11 +28,11 @@ def gen_sweep_array(start, stop, step=None, num=None):
     Returns:
         numpy.ndarray: numbers over a specified interval as a ``numpy.linspace``
     Examples:
-        >>> make_sweep(0, 10, num=5)
+        >>> gen_sweep_array(0, 10, num=5)
         [0.0, 2.5, 5.0, 7.5, 10.0]
-        >>> make_sweep(5, 10, step=1)
+        >>> gen_sweep_array(5, 10, step=1)
         [5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
-        >>> make_sweep(15, 10.5, step=1.5)
+        >>> gen_sweep_array(15, 10.5, step=1.5)
         >[15.0, 13.5, 12.0, 10.5]
     """
     if step and num:
@@ -56,8 +53,8 @@ def gen_sweep_array(start, stop, step=None, num=None):
             if abs(step - real_step) / step > 0.05:
                 # print a warning if the effective step size is more than 2% d
                 # different than what was requested
-                print(
-                    "WARNING: Could not find an integer number of points for "
+                warn(
+                    "Could not find an integer number of points for "
                     "the the given `start`, `stop`, and `step`={0}."
                     " Effective step size is `step`={1:.4f}".format(step, real_step)
                 )
@@ -71,16 +68,11 @@ def gen_sweep_array(start, stop, step=None, num=None):
 ############
 
 
-def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.50):
-
-    if not listener_is_running():
-        start_listener()
-        time.sleep(0.25)
+def readvstime(delay, timeout, *param_meas):
 
     meas = Measurement()
-    meas.write_period = write_period
 
-    timer = TimerParam("time")
+    timer = ElapsedTimeParameter("time")
     meas.register_parameter(timer)
 
     output = []
@@ -90,6 +82,7 @@ def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.50):
 
     with meas.run(write_in_background=True) as ds:
 
+        timer.reset_clock()
         while True:
 
             time.sleep(delay)
@@ -102,7 +95,6 @@ def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.50):
 
             if t_now > timeout:
                 break
-        time.sleep(write_period)  # let final data points propogate to plot
 
     return ds.dataset
 
@@ -112,14 +104,9 @@ def readvstime(delay, timeout, *param_meas, plot_logs=False, write_period=0.50):
 ############
 
 
-def do1d(param_set, xarray, delay, *param_meas, plot_logs=False, write_period=0.50):
-
-    if not listener_is_running():
-        start_listener()
-        time.sleep(0.25)
+def do1d(param_set, xarray, delay, *param_meas):
 
     meas = Measurement()
-    meas.write_period = write_period
 
     meas.register_parameter(param_set)
     param_set.post_delay = 0
@@ -142,32 +129,16 @@ def do1d(param_set, xarray, delay, *param_meas, plot_logs=False, write_period=0.
 
             ds.add_result((param_set, x), *output)
 
-        time.sleep(write_period)  # let final data points propogate to plot
-
     return ds.dataset
 
 
-def do1d_repeat_oneway(
-    param_setx,
-    xarray,
-    delayx,
-    num_repeats,
-    delayy,
-    *param_meas,
-    plot_logs=False,
-    write_period=0.50
-):
-
-    if not listener_is_running():
-        start_listener()
-        time.sleep(0.25)
+def do1d_repeat_oneway(param_setx, xarray, delayx, num_repeats, delayy, *param_meas):
 
     meas = Measurement()
-    meas.write_period = write_period
 
     meas.register_parameter(param_setx)
     param_setx.post_delay = 0
-    param_county = CounterParam("repeat")
+    param_county = CountParameter("repeat")
     meas.register_parameter(param_county)
 
     output = []
@@ -188,32 +159,17 @@ def do1d_repeat_oneway(
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
                 ds.add_result((param_setx, x), (param_county, y), *output)
-        time.sleep(write_period)  # let final data points propogate to plot
 
     return ds.dataset
 
 
-def do1d_repeat_twoway(
-    param_setx,
-    xarray,
-    delayx,
-    num_repeats,
-    delayy,
-    *param_meas,
-    plot_logs=False,
-    write_period=0.50
-):
-
-    if not listener_is_running():
-        start_listener()
-        time.sleep(0.25)
+def do1d_repeat_twoway(param_setx, xarray, delayx, num_repeats, delayy, *param_meas):
 
     meas = Measurement()
-    meas.write_period = write_period
 
     meas.register_parameter(param_setx)
     param_setx.post_delay = 0
-    param_county = CounterParam("repeat")
+    param_county = CountParameter("repeat")
     meas.register_parameter(param_county)
 
     output = []
@@ -239,29 +195,13 @@ def do1d_repeat_twoway(
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
                 ds.add_result((param_setx, x), (param_county, y), *output)
-        time.sleep(write_period)  # let final data points propogate to plot
 
     return ds.dataset
 
 
-def do2d(
-    param_setx,
-    xarray,
-    delayx,
-    param_sety,
-    yarray,
-    delayy,
-    *param_meas,
-    plot_logs=False,
-    write_period=0.50
-):
-
-    if not listener_is_running():
-        start_listener()
-        time.sleep(0.25)
+def do2d(param_setx, xarray, delayx, param_sety, yarray, delayy, *param_meas):
 
     meas = Measurement()
-    meas.write_period = write_period
 
     meas.register_parameter(param_setx)
     param_setx.post_delay = 0
@@ -285,7 +225,5 @@ def do2d(
                 for i, parameter in enumerate(param_meas):
                     output[i][1] = parameter.get()
                 ds.add_result((param_setx, x), (param_sety, y), *output)
-
-        time.sleep(write_period)  # let final data points propogate to plot
 
     return ds.dataset

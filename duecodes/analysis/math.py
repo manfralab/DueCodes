@@ -38,3 +38,9 @@ def moving_avg(x, y, avgs, axis=None):
         ret = np.cumsum(y, dtype=np.float)
         ret[avgs:] = ret[avgs:] - ret[:-avgs]
         return xx, ret[avgs - 1 :] / avgs
+
+
+def derivative(f, x, axis=None):
+    # returns df(x)/dx
+    dx = (x - np.roll(x, 1))[1:].mean()
+    return np.gradient(f, dx, axis=axis)
