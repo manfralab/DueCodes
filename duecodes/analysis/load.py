@@ -7,11 +7,6 @@ from xarray import Dataset
 from qcodes import load_by_id, load_by_guid
 from qcodes.dataset.data_set import DataSet
 from qcodes.dataset.guids import validate_guid_format
-from qcodes.dataset.data_export import (
-    flatten_1D_data_for_plot,
-    datatype_from_setpoints_2d,
-    reshape_2D_data,
-)
 
 
 def get_dataset_by_identifier(identifier: Union[int, str]):
@@ -56,15 +51,15 @@ def _empty_dataset_dict(dataset: DataSet):
         independent_units.append(param_spec.unit)
 
     if len(independent_params) == 1:
-        sweep_type = "1d"
+        sweep_type = "1D"
     elif len(independent_params) == 2:
-        sweep_type = "2d"
+        sweep_type = "2D"
     else:
         sweep_type = "unknown"
 
     return {
         "Independent Parameters": list(zip(independent_params, independent_units)),
-        "Dependent Parameters": list(zip(independent_params, independent_units)),
+        "Dependent Parameters": list(zip(dependent_params, dependent_units)),
         "Dataset Length": dataset.number_of_results,
         "Sweep Type": sweep_type,
         "Start/End Times": (dataset.run_timestamp(), dataset.completed_timestamp()),
@@ -79,90 +74,16 @@ def get_dataset_description(identifier: Union[int, str]) -> dict:
     return dataset_dict
 
 
-# def _shaped_data_dict(dataset: DataSet, *params: str):
-#
-#     # setup dataset_dict
-#     dataset_dict = _empty_dataset_dict(dataset)
-#
-#     # check params input
-#     if params:
-#         _check_dependent_params(dataset_dict["dependent_parameters"]["names"], *params)
-#     else:
-#         params = tuple(dataset_dict["dependent_parameters"]["names"])
-#
-#     # get all requested data from database
-#     flat_data_dict = {}
-#     for data_dict in dataset.get_parameter_data(*params).values():
-#         for param, data in data_dict.items():
-#             flat_data_dict[param] = flatten_1D_data_for_plot(data)
-#
-#     # store data into dataset_dict
-#     for param_type in ["independent_parameters", "dependent_parameters"]:
-#         for idx, param in enumerate(dataset_dict[param_type]["names"]):
-#             if param in flat_data_dict:
-#                 dataset_dict[param_type]["data"][idx] = flat_data_dict[param]
-#                 dataset_dict[param_type]["shape"][idx] = flat_data_dict[param].shape
-#
-#     if len(dataset_dict["independent_parameters"]["names"]) == 2:
-#
-#         x_vals = flat_data_dict[dataset_dict["independent_parameters"]["names"][0]]
-#         y_vals = flat_data_dict[dataset_dict["independent_parameters"]["names"][1]]
-#         # print(dataset_dict['independent_parameters']['shape'][0])
-#         datatype = datatype_from_setpoints_2d(x_vals, y_vals)
-#
-#         if datatype in ("2D_grid", "2D_equidistant"):
-#             for idx, param in enumerate(dataset_dict["dependent_parameters"]["names"]):
-#
-#                 z_vals = (dataset_dict["dependent_parameters"]["data"][idx],)
-#                 (
-#                     dataset_dict["independent_parameters"]["data"][0],
-#                     dataset_dict["independent_parameters"]["data"][1],
-#                     dataset_dict["dependent_parameters"]["data"][idx],
-#                 ) = reshape_2D_data(x_vals, y_vals, z_vals)
-#
-#                 dataset_dict["independent_parameters"]["shape"][0] = dataset_dict[
-#                     "independent_parameters"
-#                 ]["data"][0].shape
-#                 dataset_dict["independent_parameters"]["shape"][1] = dataset_dict[
-#                     "independent_parameters"
-#                 ]["data"][1].shape
-#                 dataset_dict["dependent_parameters"]["shape"][idx] = dataset_dict[
-#                     "dependent_parameters"
-#                 ]["data"][idx].shape
-#
-#     return dataset_dict
-#
-#
-# def get_data_as_numpy(identifier: Union[int, str], *params: str):
-#     """
-#     arguments:
-#         identifier: guid or run_id
-#         *params: dependent (measured) parameters to be included in the returned DataFrame
-#                  if no params are included, the default is to return everything
-#     returns (1d):
-#         x_data (ndarray), [y0_data (ndarray), y1_data (ndarray), ...]
-#     returns (2d):
-#         x_data (ndarray), y_data (ndarray), [z0_data (ndarray), z1_data (ndarray), ...]
-#     """
-#
-#     dataset = get_dataset_by_identifier(identifier)
-#     dataset_dict = _shaped_data_dict(dataset, *params)
-#
-#     if len(dataset_dict["independent_parameters"]["names"]) == 1:
-#         return (
-#             dataset_dict["independent_parameters"]["data"][0],
-#             dataset_dict["dependent_parameters"]["data"],
-#         )
-#     elif len(dataset_dict["independent_parameters"]["names"]) == 2:
-#         return (
-#             dataset_dict["independent_parameters"]["data"][0],
-#             dataset_dict["independent_parameters"]["data"][1],
-#             dataset_dict["dependent_parameters"]["data"],
-#         )
-#     else:
-#         raise ValueErro(
-#             "How did you get this far with 3 independent parameters? Try pandas or xarray"
-#         )
+def get_data_as_numpy(identifier: Union[int, str], *params: str):
+    """
+        returns (x, y_list) or (x, y, z_list)
+    """
+    xarr = get_data_as_xarray(identifier, *params)
+
+    return (
+        *list(xarr.coords[param].values for param in xarr.coords),
+        list(xarr[param].values for param in xarr),
+    )
 
 
 def _dataframe_to_xarray(df: DataFrame) -> Dataset:
@@ -175,8 +96,8 @@ def _dataframe_to_xarray(df: DataFrame) -> Dataset:
     df = df[~df.index.duplicated()]
     len_new_df = len(df)
 
-    if len_new_df < len_old_df:
-        warn("Duplicate values removed from DataFrame. This dataset is weird.")
+    # if len_new_df < len_old_df:
+    #     warn("Duplicate values removed from DataFrame. This dataset is weird.")
 
     return df.to_xarray()
 
@@ -198,16 +119,16 @@ def get_data_as_dataframe(identifier: Union[int, str], *params: str) -> DataFram
     """
 
     dataset = get_dataset_by_identifier(identifier)  # load dataset
-    dependent_parameters = _empty_dataset_dict(dataset)["dependent_parameters"]["names"]
-    _check_dependent_params(dependent_parameters, *params)
+    _check_dependent_params(dataset, *params)
 
     dataframe_dict = dataset.get_data_as_pandas_dataframe(*params)
 
     return pd.concat(list(dataframe_dict.values()), axis=1)
 
 
-def _check_dependent_params(dependent_parameters: List[str], *params: str):
+def _check_dependent_params(dataset: DataSet, *params: str):
 
+    dependent_parameters = [param.name for param in dataset.dependent_parameters]
     for param in params:
         if param not in dependent_parameters:
             raise TypeError(
