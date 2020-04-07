@@ -91,7 +91,6 @@ def _dataframe_to_xarray(df: DataFrame) -> Dataset:
     Convert pandas DataFrame with MultiIndex to an xarray DataSet.
     """
 
-    df = get_data_as_dataframe(353)
     len_old_df = len(df)
     df = df[~df.index.duplicated()]
     len_new_df = len(df)
