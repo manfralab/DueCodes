@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame
 from xarray import Dataset
-from qcodes import load_by_id, load_by_guid
+from qcodes.dataset.data_set import load_by_run_spec
 from qcodes.dataset.data_set import DataSet
 from qcodes.dataset.guids import validate_guid_format
 
@@ -16,7 +16,7 @@ def get_dataset_by_identifier(identifier: Union[int, str]):
         identifier (str or int): run_id or guid
     """
     if isinstance(identifier, int):
-        dataset = load_by_id(identifier)
+        dataset = load_by_run_spec(captured_run_id=identifier)
     elif isinstance(identifier, str):
         validate_guid_format(identifier)
         dataset = load_by_guid(identifier)
@@ -118,9 +118,48 @@ def get_data_as_dataframe(identifier: Union[int, str], *params: str) -> DataFram
     """
 
     dataset = get_dataset_by_identifier(identifier)  # load dataset
-    _check_dependent_params(dataset, *params)
+    if params is None:
+        dependent_parameters = dataset.dependent_parameters
+    else:
+        _check_dependent_params(dataset, *params)
 
-    dataframe_dict = dataset.get_data_as_pandas_dataframe(*params)
+
+    dataframe_dict = {}
+    datadict = dataset.get_parameter_data(*params)
+    for name, subdict in datadict.items():
+        keys = list(subdict.keys())
+        if len(keys) == 0:
+            dataframe_dict[name] = pd.DataFrame()
+            continue
+        if len(keys) == 1:
+            index = None
+        elif len(keys) == 2:
+            index = pd.Index(subdict[keys[1]].ravel(), name=keys[1])
+        else:
+            indexdata = tuple(np.concatenate(subdict[key])
+                              if subdict[key].dtype == np.dtype('O')
+                              else subdict[key].ravel()
+                              for key in keys[1:])
+            index = pd.MultiIndex.from_arrays(
+                indexdata,
+                names=keys[1:])
+
+        # print(keys, [subdict[key].dtype for key in keys])
+        if subdict[keys[0]].dtype == np.dtype('O'):
+            # ravel will not fully unpack a numpy array of arrays
+            # which are of "object" dtype. This can happen if a variable
+            # length array is stored in the db. We use concatenate to
+            # flatten these
+            try:
+                mydata = subdict[keys[0]].ravel()
+            except ValueError:
+                # not all objects are nested arrays
+                mydata = subdict[keys[0]].ravel()
+        else:
+            mydata = subdict[keys[0]].ravel()
+        df = pd.DataFrame(mydata, index=index,
+                          columns=[keys[0]])
+        dataframe_dict[name] = df
 
     return pd.concat(list(dataframe_dict.values()), axis=1)
 
