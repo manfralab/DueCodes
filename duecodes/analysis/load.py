@@ -144,7 +144,6 @@ def get_data_as_dataframe(identifier: Union[int, str], *params: str) -> DataFram
                 indexdata,
                 names=keys[1:])
 
-        # print(keys, [subdict[key].dtype for key in keys])
         if subdict[keys[0]].dtype == np.dtype('O'):
             # ravel will not fully unpack a numpy array of arrays
             # which are of "object" dtype. This can happen if a variable
