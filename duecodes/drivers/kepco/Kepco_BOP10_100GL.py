@@ -4,11 +4,11 @@ Created on Sun Apr  7 13:12:10 2019
 
 @author: Teng
 """
-import logging
+# import logging
 from qcodes import VisaInstrument
 from qcodes import validators as val
 
-log = logging.getLogger(__name__)
+# LOGGER = logging.getLogger(__name__)
 
 
 class Kepco_BOP10_100GL(VisaInstrument):

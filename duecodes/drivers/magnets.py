@@ -5,12 +5,12 @@ or use multiple instruments used as controllers and contain magnet
 calibration information as attributes
 """
 
-import logging
+# import logging
 from warnings import warn
 from qcodes import validators as vals
-from duecodes.drivers.Kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
+from duecodes.drivers.kepco.Kepco_BOP10_100GL import Kepco_BOP10_100GL
 
-LOGGER = logging.getLogger(__name__)
+# LOGGER = logging.getLogger(__name__)
 
 
 class Oxford5TMagnet(Kepco_BOP10_100GL):
@@ -53,17 +53,17 @@ class Oxford5TMagnet(Kepco_BOP10_100GL):
         )
 
         warn(
-            "Switch heater on magnet must be set manually with the attached DC power supply."
+            "Switch heater on magnet must be set with the attached DC power supply."
         )
 
     def _get_field(self):
-        log.info("get field (T)")
+        # LOGGER.info("get field (T)")
         current = self.current.get()
         field = current / self.amp_per_tesla
         return round(field, 6)
 
     def _set_field(self, field):
-        log.info("set field (T)")
+        # LOGGER.info("set field (T)")
         set_point = round(field * self.amp_per_tesla, 6)
         self.current.set(set_point)
 
