@@ -60,6 +60,9 @@ class HP3478A(VisaInstrument):
             docstring=('Get most recent reading. Try to get the units right.')
         )
 
+    def read(self):
+        return self.visa_handle.read()
+
     def _set_mode(self, mode):
 
         if mode in [1, 2]:
@@ -79,5 +82,5 @@ class HP3478A(VisaInstrument):
             self.write(f'R{range}')
 
     def _get_reading(self):
-        rdng = self.visa_handle.read()
+        rdng = self.read()
         return float(rdng)
