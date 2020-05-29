@@ -7,7 +7,7 @@ from qcodes.instrument.specialized_parameters import ElapsedTimeParameter
 class CountParameter(Parameter):
     """ simple parameter that keeps track of how many times it has been called """
 
-    def __init__(self, name: str, label: str = "Couter", **kwargs: Any):
+    def __init__(self, name: str, label: str = "Couter", **kwargs):
 
         hardcoded_kwargs = ["unit", "get_cmd", "set_cmd"]
 
@@ -34,26 +34,26 @@ class CountParameter(Parameter):
         self._count = 0
 
 
-# class CurrentParam1211(Parameter):
-#     def __init__(self, measured_param, c_amp_ins, name="curr"):
-#
-#         super().__init__(name, label="ithaco1211 current", unit="A")
-#
-#         self._measured_param = measured_param
-#         self._instrument = c_amp_ins
-#
-#         p_name = measured_param.name
-#         p_label = getattr(measured_param, "label", None)
-#         p_unit = getattr(measured_param, "unit", None)
-#
-#     def get_raw(self):
-#         volt = self._measured_param.get()
-#         current = (
-#             self._instrument.sens.get() * self._instrument.sens_factor.get()
-#         ) * volt
-#
-#         if self._instrument.invert.get():
-#             current *= -1
-#
-#         self.cache.set(current)
-#         return current
+class CurrentParam1211(Parameter):
+    def __init__(self, measured_param, c_amp_ins, name="curr"):
+
+        super().__init__(name, label="ithaco1211 current", unit="A")
+
+        self._measured_param = measured_param
+        self._instrument = c_amp_ins
+
+        p_name = measured_param.name
+        p_label = getattr(measured_param, "label", None)
+        p_unit = getattr(measured_param, "unit", None)
+
+    def get_raw(self):
+        volt = self._measured_param.get()
+        current = (
+            self._instrument.sens.get() * self._instrument.sens_factor.get()
+        ) * volt
+
+        if self._instrument.invert.get():
+            current *= -1
+
+        self.cache.set(current)
+        return current

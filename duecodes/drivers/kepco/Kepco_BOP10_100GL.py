@@ -28,9 +28,8 @@ class Kepco_BOP10_100GL(VisaInstrument):
         self.add_parameter(
             name="current_limit",
             label="current limit",
-            get_cmd="CURR:LIM?",
+            get_cmd=self._get_current_limit,
             set_cmd="CURR:PROT:LIM {}",
-            get_parser=float,
             set_parser=float,
             unit="A",
             docstring="get/set current limit (A)",
@@ -51,3 +50,8 @@ class Kepco_BOP10_100GL(VisaInstrument):
 
     def _get_current(self):
         return float(self.ask("CURR?"))
+
+    def _get_current_limit(self):
+        limit_str = self.ask("CURR:PROT:LIM?")
+        low_limit, high_limit = limit_str.split(',')
+        return min(float(low_limit), float(high_limit))

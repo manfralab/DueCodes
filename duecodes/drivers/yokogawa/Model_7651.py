@@ -26,7 +26,7 @@ class Model_7651(VisaInstrument):
             '10mA': 5,
             '100mA': 6,
         }
-        self._ranges = list(self._VOLT_RANGES.keys()) + list(self._CURR_RANGESa.keys())
+        self._ranges = list(self._VOLT_RANGES.keys()) + list(self._CURR_RANGES.keys())
 
         # self.add_parameter(
         #     'mode',

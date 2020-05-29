@@ -52,6 +52,13 @@ class Oxford5TMagnet(Kepco_BOP10_100GL):
             docstring="get/set ramp_rate in mT/s",
         )
 
+        self.connect_message()
+
+    def connect_message(self):
+        idn = self.IDN()
+        con_msg = ('Connected to: Oxford 5T magnet. Using {vendor} {model} power supply '
+                   '(serial:{serial}, firmware:{firmware})'.format(**idn))
+        print(con_msg)
         warn(
             "Switch heater on magnet must be set with the attached DC power supply."
         )
