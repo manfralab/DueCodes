@@ -1,4 +1,5 @@
 import sys
+import time
 import subprocess
 import hashlib
 import argparse
@@ -15,18 +16,32 @@ def get_qc_database():
     return qc_config['core']['db_location']
 
 
-def filepath_hash(filepath):
-    md5_hash = hashlib.md5(filepath.encode('utf-8'))
+def filepath_hash(dbPath):
+    md5_hash = hashlib.md5(dbPath.encode('utf-8'))
     return md5_hash.hexdigest()
+
+
+def get_lockfile_path(dbPath):
+    path_hash = filepath_hash(str(dbPath))
+    lock_file_path = Path(QtCore.QDir.tempPath()) / f'plottr_{path_hash}.lock'
+    return lock_file_path.expanduser().absolute()
+
+
+def is_locked(dbPath):
+    lockfile_path = get_lockfile_path(dbPath)
+    lockfile = QtCore.QLockFile(str(lockfile_path))
+    if lockfile.tryLock(100):
+        return False
+
+    return True
 
 
 def run_with_lockfile(dbPath: str):
     from PyQt5 import QtCore, QtWidgets
 
     dbPath = Path(dbPath).expanduser().absolute()
-    path_hash = filepath_hash(str(dbPath))
-    lock_file_name = f'plottr_{path_hash}.lock'
-    lockfile = QtCore.QLockFile(QtCore.QDir.tempPath() + lock_file_name)
+    lockfile_path = get_lockfile_path(dbPath)
+    lockfile = QtCore.QLockFile(str(lockfile_path))
 
     if lockfile.tryLock(100):
         app = QtGui.QApplication([])
@@ -42,10 +57,10 @@ def run_with_lockfile(dbPath: str):
     raise RuntimeWarning("plottr instance already open for this database!") # inspectr already running
 
 
-def start_inspectr(db_path=None):
+def start_inspectr(dbPath=None, timeout=10.0):
 
-    if not db_path:
-        db_path = get_qc_database()
+    if not dbPath:
+        dbPath = get_qc_database()
 
     python_path = str(Path(sys.executable))
 
@@ -53,13 +68,31 @@ def start_inspectr(db_path=None):
     duecodes_path_parts = Path(duecodes.__file__).parts[:-1]
     duecodes_path_full = str(Path(*duecodes_path_parts, "plotting\inspectr.py"))
 
-    print(f"starting plottr with qcodes database at {db_path} ...")
+    if is_locked(dbPath):
+        print(f"plottr instance with qcodes database at {dbPath} is already running.")
+        return
+
+    print(f"starting plottr with qcodes database at {dbPath} ...")
     out = subprocess.Popen(
-        [python_path, duecodes_path_full, f'--dbpath={db_path}'],
+        [python_path, duecodes_path_full, f'--dbpath={dbPath}'],
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
+
+    time.sleep(0.1)
+
+    start = time.time()
+    while True:
+        if is_locked(dbPath):
+            print("plottr successfully started.")
+            return
+        if time.time() - start > timeout:
+            print("plottr failed to start!")
+            return
+        time.sleep(0.1)
+
+    print("plottr failed to start!")
 
 
 if __name__ == '__main__':
