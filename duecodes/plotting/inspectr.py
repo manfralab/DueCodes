@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path, PurePath
 from pyqtgraph.Qt import QtCore, QtGui
 
+import logging
 from plottr import log as plottrlog
 from plottr.apps import inspectr
 
@@ -23,7 +24,8 @@ def filepath_hash(dbPath):
 
 def get_lockfile_path(dbPath):
     path_hash = filepath_hash(str(dbPath))
-    lock_file_path = Path(QtCore.QDir.tempPath()) / f'plottr_{path_hash}.lock'
+    # lock_file_path = Path(dbPath).parent / f'plottr_{path_hash}.lock'
+    lock_file_path = Path(QtCore.QDir.tempPath()).parent / f'plottr_{path_hash}.lock'
     return lock_file_path.expanduser().absolute()
 
 
@@ -41,11 +43,15 @@ def run_with_lockfile(dbPath: str):
 
     dbPath = Path(dbPath).expanduser().absolute()
     lockfile_path = get_lockfile_path(dbPath)
+    print(lockfile_path)
     lockfile = QtCore.QLockFile(str(lockfile_path))
 
     if lockfile.tryLock(100):
         app = QtGui.QApplication([])
-        plottrlog.enableStreamHandler(True)
+
+        # what is the right way to create a logger for this?
+        # log_win = plottrlog.setupLogging(level=logging.DEBUG)
+        plottrlog.enableStreamHandler(False) # no log handler at this point
 
         win = inspectr.inspectr(dbPath=dbPath)
         win.show()
