@@ -1,12 +1,18 @@
 """
 This module contains simple sweeps for measurements
-and relies on sqpplot for plotting.
 """
 
 import time
+from typing import (Callable, Iterator, List, Optional,
+                    Sequence, Tuple, Union, Dict)
 from warnings import warn
 import numpy as np
 from qcodes.dataset.measurements import Measurement
+from qcodes.dataset.experiment_container import Experiment
+from qcodes.utils.dataset import doNd as qcnd
+from qcodes.instrument.parameter import _BaseParameter
+from qcodes.dataset.descriptions.detect_shapes import \
+    detect_shape_of_measurement
 from duecodes.drivers.parameters import CountParameter, ElapsedTimeParameter
 
 
@@ -68,35 +74,53 @@ def gen_sweep_array(start, stop, step=None, num=None):
 ############
 
 
-def readvstime(delay, timeout, *param_meas):
+def readvstime(
+    delay: float,
+    timeout: float,
+    *param_meas: qcnd.ParamMeasT,
+    exp: Optional[Experiment] = None,
+    background_write: bool = True,
+    write_period: float = 0.25,
+    enter_actions: qcnd.ActionsT = (),
+    exit_actions: qcnd.ActionsT = (),
+    additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
+):
 
-    meas = Measurement()
+    meas = Measurement(exp=exp)
 
     timer = ElapsedTimeParameter("time")
-    meas.register_parameter(timer)
 
-    output = []
-    for pm in param_meas:
-        meas.register_parameter(pm, setpoints=(timer,))
-        output.append([pm, None])
+    all_setpoint_params = (timer,) + tuple(
+        s for s in additional_setpoints)
 
-    with meas.run(write_in_background=True) as ds:
+    measured_parameters = tuple(param for param in param_meas
+                                if isinstance(param, _BaseParameter))
+    if len(measured_parameters)>2:
+        use_threads = True
+    else:
+        use_threads = False
 
+    qcnd._register_parameters(meas, all_setpoint_params)
+    qcnd._register_parameters(meas, param_meas, setpoints=all_setpoint_params,
+                         shapes=shapes)
+    qcnd._set_write_period(meas, write_period)
+    qcnd._register_actions(meas, enter_actions, exit_actions)
+
+    with qcnd._catch_keyboard_interrupts() as interrupted, \
+        meas.run(write_in_background=background_write) as datasaver:
+
+        additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         timer.reset_clock()
         while True:
-
             time.sleep(delay)
-            t_now = timer.get()
+            datasaver.add_result(
+                (timer, timer.get()),
+                *qcnd._process_params_meas(param_meas, use_threads=use_threads),
+                *additional_setpoints_data
+            )
+        dataset = datasaver.dataset
 
-            for i, parameter in enumerate(param_meas):
-                output[i][1] = parameter.get()
-
-            ds.add_result((timer, t_now), *output)
-
-            if t_now > timeout:
-                break
-
-    return ds.dataset
+    return dataset
 
 
 ############
@@ -104,126 +128,286 @@ def readvstime(delay, timeout, *param_meas):
 ############
 
 
-def do1d(param_set, xarray, delay, *param_meas):
+def do1d(
+    param_set: _BaseParameter,
+    xarray,
+    delay: float,
+    *param_meas: qcnd.ParamMeasT,
+    exp: Optional[Experiment] = None,
+    background_write: bool = True,
+    write_period: float = 0.25,
+    enter_actions: qcnd.ActionsT = (),
+    exit_actions: qcnd.ActionsT = (),
+    additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
+):
 
-    meas = Measurement()
+    if not _is_monotonic(xarray):
+        warn('Sweep array is not monotonic. This is pretty weird. Reconsider.')
 
-    meas.register_parameter(param_set)
-    param_set.post_delay = 0
+    meas = Measurement(exp=exp)
 
-    output = []
-    for pm in param_meas:
-        meas.register_parameter(pm, setpoints=(param_set,))
-        output.append([pm, None])
+    all_setpoint_params = (param_set,) + tuple(
+        s for s in additional_setpoints)
 
-    with meas.run(write_in_background=True) as ds:
+    measured_parameters = tuple(param for param in param_meas
+                                if isinstance(param, _BaseParameter))
+    if len(measured_parameters)>2:
+        use_threads = True
+    else:
+        use_threads = False
 
-        param_set.set(xarray[0])
-        time.sleep(0.5)
+    try:
+        loop_shape = tuple(1 for _ in additional_setpoints) + (len(xarray),)
+        shapes: Shapes = detect_shape_of_measurement(
+            measured_parameters,
+            loop_shape
+        )
+    except TypeError:
+        warn(f"Could not detect shape of {measured_parameters} "
+             f"falling back to unknown shape.")
+        shapes = None
 
-        for x in xarray:
-            param_set.set(x)
+    qcnd._register_parameters(meas, all_setpoint_params)
+    qcnd._register_parameters(meas, param_meas, setpoints=all_setpoint_params,
+                         shapes=shapes)
+    qcnd._set_write_period(meas, write_period)
+    qcnd._register_actions(meas, enter_actions, exit_actions)
+
+    with qcnd._catch_keyboard_interrupts() as interrupted, \
+        meas.run(write_in_background=background_write) as datasaver:
+
+        additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
+        for set_point in xarray:
+            param_set.set(set_point)
             time.sleep(delay)
-            for i, parameter in enumerate(param_meas):
-                output[i][1] = parameter.get()
+            datasaver.add_result(
+                (param_set, set_point),
+                *qcnd._process_params_meas(param_meas, use_threads=use_threads),
+                *additional_setpoints_data
+            )
+        dataset = datasaver.dataset
 
-            ds.add_result((param_set, x), *output)
-
-    return ds.dataset
+    return dataset
 
 
-def do1d_repeat_oneway(param_setx, xarray, delayx, num_repeats, delayy, *param_meas):
+def do1d_repeat_oneway(
+    param_setx, xarray, delayx,
+    num_repeats, delayy,
+    *param_meas: qcnd.ParamMeasT,
+    enter_actions: qcnd.ActionsT = (),
+    exit_actions: qcnd.ActionsT = (),
+    before_inner_actions: qcnd.ActionsT = (),
+    after_inner_actions: qcnd.ActionsT = (),
+    write_period: float = 0.25,
+    exp: Optional[Experiment] = None,
+    additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
+):
+    if (not _is_monotonic(xarray)) or (not _is_monotonic(yarray)):
+        warn('Sweep array is not monotonic. This is pretty weird. Reconsider.')
 
-    meas = Measurement()
+    meas = Measurement(exp=exp)
 
-    meas.register_parameter(param_setx)
-    param_setx.post_delay = 0
     param_county = CountParameter("repeat")
-    meas.register_parameter(param_county)
+    all_setpoint_params = (param_county, param_setx,) + tuple(
+            s for s in additional_setpoints)
 
-    output = []
-    for parameter in param_meas:
-        meas.register_parameter(parameter, setpoints=(param_setx, param_county))
-        output.append([parameter, None])
+    measured_parameters = tuple(param for param in param_meas
+                                if isinstance(param, _BaseParameter))
+    if len(measured_parameters)>2:
+        use_threads = True
+    else:
+        use_threads = False
 
-    with meas.run(write_in_background=True) as ds:
+    try:
+        loop_shape = tuple(
+            1 for _ in additional_setpoints
+        ) + (num_repeats, len(xarray))
+        shapes: Shapes = detect_shape_of_measurement(
+            measured_parameters,
+            loop_shape
+        )
+    except TypeError:
+        warn(
+            f"Could not detect shape of {measured_parameters} "
+            f"falling back to unknown shape.")
+        shapes = None
 
+    _register_parameters(meas, all_setpoint_params)
+    _register_parameters(meas, param_meas, setpoints=all_setpoint_params,
+                         shapes=shapes)
+    _set_write_period(meas, write_period)
+    _register_actions(meas, enter_actions, exit_actions)
+
+    param_setx.post_delay = 0.0
+
+    with _catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
+        additional_setpoints_data = _process_params_meas(additional_setpoints)
         for i in range(num_repeats):
-
             y = param_county.get()
             param_setx.set(xarray[0])
             time.sleep(delayy)
-            for x in xarray:
-                param_setx.set(x)
+            for action in before_inner_actions:
+                action()
+            for set_pointx in xarray:
+                param_setx.set(set_pointx)
                 time.sleep(delayx)
-                for i, parameter in enumerate(param_meas):
-                    output[i][1] = parameter.get()
-                ds.add_result((param_setx, x), (param_county, y), *output)
 
-    return ds.dataset
+                datasaver.add_result((param_county, y),
+                                     (param_setx, set_pointx),
+                                     *_process_params_meas(param_meas, use_threads=use_threads),
+                                     *additional_setpoints_data)
+            for action in after_inner_actions:
+                action()
+
+        dataset = datasaver.dataset
+    return dataset
 
 
-def do1d_repeat_twoway(param_setx, xarray, delayx, num_repeats, delayy, *param_meas):
+def do1d_repeat_twoway(
+    param_setx, xarray, delayx,
+    num_repeats, delayy,
+    *param_meas: qcnd.ParamMeasT,
+    enter_actions: qcnd.ActionsT = (),
+    exit_actions: qcnd.ActionsT = (),
+    before_inner_actions: qcnd.ActionsT = (),
+    after_inner_actions: qcnd.ActionsT = (),
+    write_period: float = 0.25,
+    exp: Optional[Experiment] = None,
+    additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
+):
+    if (not _is_monotonic(xarray)) or (not _is_monotonic(yarray)):
+        warn('Sweep array is not monotonic. This is pretty weird. Reconsider.')
 
-    meas = Measurement()
+    meas = Measurement(exp=exp)
 
-    meas.register_parameter(param_setx)
-    param_setx.post_delay = 0
     param_county = CountParameter("repeat")
-    meas.register_parameter(param_county)
+    all_setpoint_params = (param_county, param_setx,) + tuple(
+            s for s in additional_setpoints)
 
-    output = []
-    for parameter in param_meas:
-        meas.register_parameter(parameter, setpoints=(param_setx, param_county))
-        output.append([parameter, None])
+    measured_parameters = tuple(param for param in param_meas
+                                if isinstance(param, _BaseParameter))
+    if len(measured_parameters)>2:
+        use_threads = True
+    else:
+        use_threads = False
 
-    with meas.run(write_in_background=True) as ds:
+    try:
+        loop_shape = tuple(
+            1 for _ in additional_setpoints
+        ) + (num_repeats, len(xarray))
+        shapes: Shapes = detect_shape_of_measurement(
+            measured_parameters,
+            loop_shape
+        )
+    except TypeError:
+        warn(
+            f"Could not detect shape of {measured_parameters} "
+            f"falling back to unknown shape.")
+        shapes = None
 
+    _register_parameters(meas, all_setpoint_params)
+    _register_parameters(meas, param_meas, setpoints=all_setpoint_params,
+                         shapes=shapes)
+    _set_write_period(meas, write_period)
+    _register_actions(meas, enter_actions, exit_actions)
+
+    param_setx.post_delay = 0.0
+
+    with _catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
+        additional_setpoints_data = _process_params_meas(additional_setpoints)
         for i in range(num_repeats):
-
             y = param_county.get()
             if y % 2 == 0:
                 xsetpoints = xarray
             else:
                 xsetpoints = xarray[::-1]
-
             param_setx.set(xsetpoints[0])
             time.sleep(delayy)
-            for x in xsetpoints:
-                param_setx.set(x)
+
+            for action in before_inner_actions:
+                action()
+
+            for set_pointx in xsetpoints:
+                param_setx.set(set_pointx)
                 time.sleep(delayx)
-                for i, parameter in enumerate(param_meas):
-                    output[i][1] = parameter.get()
-                ds.add_result((param_setx, x), (param_county, y), *output)
 
-    return ds.dataset
+                datasaver.add_result((param_county, y),
+                                     (param_setx, set_pointx),
+                                     *_process_params_meas(param_meas, use_threads=use_threads),
+                                     *additional_setpoints_data)
+            for action in after_inner_actions:
+                action()
+
+        dataset = datasaver.dataset
+    return dataset
 
 
-def do2d(param_setx, xarray, delayx, param_sety, yarray, delayy, *param_meas):
+def do2d(
+    param_setx, xarray, delayx,
+    param_sety, yarray, delayy,
+    *param_meas: qcnd.ParamMeasT,
+    enter_actions: qcnd.ActionsT = (),
+    exit_actions: qcnd.ActionsT = (),
+    before_inner_actions: qcnd.ActionsT = (),
+    after_inner_actions: qcnd.ActionsT = (),
+    write_period: float = 0.25,
+    exp: Optional[Experiment] = None,
+    additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
+):
 
-    meas = Measurement()
+    meas = Measurement(exp=exp)
+    all_setpoint_params = (param_sety, param_setx,) + tuple(
+            s for s in additional_setpoints)
 
-    meas.register_parameter(param_setx)
-    param_setx.post_delay = 0
-    meas.register_parameter(param_sety)
-    param_sety.post_delay = 0
+    measured_parameters = tuple(param for param in param_meas
+                                if isinstance(param, _BaseParameter))
+    if len(measured_parameters)>2:
+        use_threads = True
+    else:
+        use_threads = False
 
-    output = []
-    for parameter in param_meas:
-        meas.register_parameter(parameter, setpoints=(param_setx, param_sety))
-        output.append([parameter, None])
+    try:
+        loop_shape = tuple(
+            1 for _ in additional_setpoints
+        ) + (len(yarray), len(xarray))
+        shapes: Shapes = detect_shape_of_measurement(
+            measured_parameters,
+            loop_shape
+        )
+    except TypeError:
+        warn(
+            f"Could not detect shape of {measured_parameters} "
+            f"falling back to unknown shape.")
+        shapes = None
 
-    with meas.run(write_in_background=True) as ds:
+    _register_parameters(meas, all_setpoint_params)
+    _register_parameters(meas, param_meas, setpoints=all_setpoint_params,
+                         shapes=shapes)
+    _set_write_period(meas, write_period)
+    _register_actions(meas, enter_actions, exit_actions)
 
-        for y in yarray:
-            param_sety.set(y)
+    param_setx.post_delay = 0.0
+    param_sety.post_delay = 0.0
+
+    with _catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
+        additional_setpoints_data = _process_params_meas(additional_setpoints)
+        for set_pointy in yarray:
+            param_sety.set(set_pointy)
             param_setx.set(xarray[0])
             time.sleep(delayy)
-            for x in xarray:
-                param_setx.set(x)
+            for action in before_inner_actions:
+                action()
+            for set_pointx in xarray:
+                param_setx.set(set_pointx)
                 time.sleep(delayx)
-                for i, parameter in enumerate(param_meas):
-                    output[i][1] = parameter.get()
-                ds.add_result((param_setx, x), (param_sety, y), *output)
 
-    return ds.dataset
+                datasaver.add_result((param_sety, set_pointy),
+                                     (param_setx, set_pointx),
+                                     *_process_params_meas(param_meas, use_threads=use_threads),
+                                     *additional_setpoints_data)
+
+            for action in after_inner_actions:
+                action()
+
+        dataset = datasaver.dataset
+    return dataset
