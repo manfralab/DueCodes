@@ -232,16 +232,16 @@ def do1d_repeat_oneway(
             f"falling back to unknown shape.")
         shapes = None
 
-    _register_parameters(meas, all_setpoint_params)
-    _register_parameters(meas, param_meas, setpoints=all_setpoint_params,
+    qcnd._register_parameters(meas, all_setpoint_params)
+    qcnd._register_parameters(meas, param_meas, setpoints=all_setpoint_params,
                          shapes=shapes)
-    _set_write_period(meas, write_period)
-    _register_actions(meas, enter_actions, exit_actions)
+    qcnd._set_write_period(meas, write_period)
+    qcnd._register_actions(meas, enter_actions, exit_actions)
 
     param_setx.post_delay = 0.0
 
-    with _catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
-        additional_setpoints_data = _process_params_meas(additional_setpoints)
+    with qcnd._catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
+        additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         for i in range(num_repeats):
             y = param_county.get()
             param_setx.set(xarray[0])
@@ -254,7 +254,7 @@ def do1d_repeat_oneway(
 
                 datasaver.add_result((param_county, y),
                                      (param_setx, set_pointx),
-                                     *_process_params_meas(param_meas, use_threads=use_threads),
+                                     *qcnd._process_params_meas(param_meas, use_threads=use_threads),
                                      *additional_setpoints_data)
             for action in after_inner_actions:
                 action()
@@ -305,16 +305,16 @@ def do1d_repeat_twoway(
             f"falling back to unknown shape.")
         shapes = None
 
-    _register_parameters(meas, all_setpoint_params)
-    _register_parameters(meas, param_meas, setpoints=all_setpoint_params,
+    qcnd._register_parameters(meas, all_setpoint_params)
+    qcnd._register_parameters(meas, param_meas, setpoints=all_setpoint_params,
                          shapes=shapes)
-    _set_write_period(meas, write_period)
-    _register_actions(meas, enter_actions, exit_actions)
+    qcnd._set_write_period(meas, write_period)
+    qcnd._register_actions(meas, enter_actions, exit_actions)
 
     param_setx.post_delay = 0.0
 
-    with _catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
-        additional_setpoints_data = _process_params_meas(additional_setpoints)
+    with qcnd._catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
+        additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         for i in range(num_repeats):
             y = param_county.get()
             if y % 2 == 0:
@@ -333,7 +333,7 @@ def do1d_repeat_twoway(
 
                 datasaver.add_result((param_county, y),
                                      (param_setx, set_pointx),
-                                     *_process_params_meas(param_meas, use_threads=use_threads),
+                                     *qcnd._process_params_meas(param_meas, use_threads=use_threads),
                                      *additional_setpoints_data)
             for action in after_inner_actions:
                 action()
@@ -380,17 +380,17 @@ def do2d(
             f"falling back to unknown shape.")
         shapes = None
 
-    _register_parameters(meas, all_setpoint_params)
-    _register_parameters(meas, param_meas, setpoints=all_setpoint_params,
+    qcnd._register_parameters(meas, all_setpoint_params)
+    qcnd._register_parameters(meas, param_meas, setpoints=all_setpoint_params,
                          shapes=shapes)
-    _set_write_period(meas, write_period)
-    _register_actions(meas, enter_actions, exit_actions)
+    qcnd._set_write_period(meas, write_period)
+    qcnd._register_actions(meas, enter_actions, exit_actions)
 
     param_setx.post_delay = 0.0
     param_sety.post_delay = 0.0
 
-    with _catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
-        additional_setpoints_data = _process_params_meas(additional_setpoints)
+    with qcnd._catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
+        additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         for set_pointy in yarray:
             param_sety.set(set_pointy)
             param_setx.set(xarray[0])
@@ -403,7 +403,7 @@ def do2d(
 
                 datasaver.add_result((param_sety, set_pointy),
                                      (param_setx, set_pointx),
-                                     *_process_params_meas(param_meas, use_threads=use_threads),
+                                     *qcnd._process_params_meas(param_meas, use_threads=use_threads),
                                      *additional_setpoints_data)
 
             for action in after_inner_actions:
