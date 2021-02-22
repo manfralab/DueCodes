@@ -81,7 +81,9 @@ class AutoRangedSRSVoltage(Parameter):
         )
 
     def _increment_sens(self, current_sens, dir: str):
-
+        # this was needed thanks to some inconsistencies in the
+        # SR830 and SR86X drivers
+        
         n = self._to_n[current_sens]
         m = -1
 
@@ -109,7 +111,9 @@ class AutoRangedSRSVoltage(Parameter):
             return self._n_to[m]
         
     def _time_constant_wait(self):
-
+        # wait for one time constant
+        # substract the time it took to get the time constant 
+        # to avoid waiting longer than necessary
         tstart = time.time()
         time_constant = self._parent_lockin.time_constant.get()
         while ( (time.time() - tstart) < time_constant):
@@ -129,9 +133,11 @@ class AutoRangedSRSVoltage(Parameter):
                 # range is too large
                 sens = self._increment_sens(sens, 'down')
             else:
+                # no change needed
                 break
 
             if sens is None:
+                # hit range limit
                 break
             else:
                 self._time_constant_wait()                
