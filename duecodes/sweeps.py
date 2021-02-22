@@ -134,7 +134,7 @@ def do1d(
     delay: float,
     *param_meas: qcnd.ParamMeasT,
     exp: Optional[Experiment] = None,
-    background_write: bool = True,
+    use_threads: Optional[bool] = None,
     write_period: float = 0.25,
     enter_actions: qcnd.ActionsT = (),
     exit_actions: qcnd.ActionsT = (),
@@ -151,8 +151,11 @@ def do1d(
 
     measured_parameters = tuple(param for param in param_meas
                                 if isinstance(param, _BaseParameter))
-    if len(measured_parameters)>2:
+
+    if (len(measured_parameters)>2) or (use_threads==True):
         use_threads = True
+    elif (use_threads==False):
+        use_threads = False
     else:
         use_threads = False
 
@@ -200,6 +203,7 @@ def do1d_repeat_oneway(
     after_inner_actions: qcnd.ActionsT = (),
     write_period: float = 0.25,
     exp: Optional[Experiment] = None,
+    use_threads: Optional[bool] = None,
     additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
 ):
     if (not _is_monotonic(xarray)) or (not _is_monotonic(yarray)):
@@ -213,8 +217,11 @@ def do1d_repeat_oneway(
 
     measured_parameters = tuple(param for param in param_meas
                                 if isinstance(param, _BaseParameter))
-    if len(measured_parameters)>2:
+
+    if (len(measured_parameters)>2) or (use_threads==True):
         use_threads = True
+    elif (use_threads==False):
+        use_threads = False
     else:
         use_threads = False
 
@@ -273,6 +280,7 @@ def do1d_repeat_twoway(
     after_inner_actions: qcnd.ActionsT = (),
     write_period: float = 0.25,
     exp: Optional[Experiment] = None,
+    use_threads: Optional[bool] = None,
     additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
 ):
     if (not _is_monotonic(xarray)) or (not _is_monotonic(yarray)):
@@ -286,8 +294,11 @@ def do1d_repeat_twoway(
 
     measured_parameters = tuple(param for param in param_meas
                                 if isinstance(param, _BaseParameter))
-    if len(measured_parameters)>2:
+
+    if (len(measured_parameters)>2) or (use_threads==True):
         use_threads = True
+    elif (use_threads==False):
+        use_threads = False
     else:
         use_threads = False
 
@@ -352,6 +363,7 @@ def do2d(
     after_inner_actions: qcnd.ActionsT = (),
     write_period: float = 0.25,
     exp: Optional[Experiment] = None,
+    use_threads: Optional[bool] = None,
     additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
 ):
 
@@ -361,8 +373,11 @@ def do2d(
 
     measured_parameters = tuple(param for param in param_meas
                                 if isinstance(param, _BaseParameter))
-    if len(measured_parameters)>2:
+
+    if (len(measured_parameters)>2) or (use_threads==True):
         use_threads = True
+    elif (use_threads==False):
+        use_threads = False
     else:
         use_threads = False
 
