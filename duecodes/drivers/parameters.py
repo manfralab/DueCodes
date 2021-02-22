@@ -60,19 +60,21 @@ class CurrentParam1211(Parameter):
 
 class AutoRangedSRSVoltage(Parameter):
 
-    def __init__(self, complex_param, max_changes=1):
+    # should work with X, Y or complex parameters from SR830 or SR860 lock ins
+    
+    def __init__(self, voltage_param, max_changes=1):
         
-        self._complex_param = complex_param
+        self._voltage_param = voltage_param
 
-        self._parent_lockin = self._complex_param.instrument
+        self._parent_lockin = self._voltage_param.instrument
         self._n_to = self._parent_lockin._N_TO_VOLT
         self._to_n = self._parent_lockin._VOLT_TO_N
 
         self.max_changes = max_changes
         
-        param_name = self._complex_param.name
-        param_label = getattr(self._complex_param, "label", None)
-        param_unit = getattr(self._complex_param, "unit", None)
+        param_name = self._voltage_param.name
+        param_label = getattr(self._voltage_param, "label", None)
+        param_unit = getattr(self._voltage_param, "unit", None)
 
         super().__init__(
             param_name+'_auto', label=param_label, unit=param_unit
@@ -109,7 +111,7 @@ class AutoRangedSRSVoltage(Parameter):
     def get_raw(self):
 
         time_const = self._parent_lockin.time_constant.get_latest()
-        val = self._complex_param.get()
+        val = self._voltage_param.get()
         sens = self._parent_lockin.sensitivity.get()
 
         for i in range(self.max_changes):
@@ -127,6 +129,6 @@ class AutoRangedSRSVoltage(Parameter):
                 break
             else:
                 time.sleep(time_const)
-                val = self._complex_param.get()
+                val = self._voltage_param.get()
 
         return val
