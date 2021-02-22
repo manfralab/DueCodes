@@ -79,7 +79,6 @@ def readvstime(
     timeout: float,
     *param_meas: qcnd.ParamMeasT,
     exp: Optional[Experiment] = None,
-    background_write: bool = True,
     write_period: float = 0.25,
     enter_actions: qcnd.ActionsT = (),
     exit_actions: qcnd.ActionsT = (),
@@ -107,7 +106,7 @@ def readvstime(
     qcnd._register_actions(meas, enter_actions, exit_actions)
 
     with qcnd._catch_keyboard_interrupts() as interrupted, \
-        meas.run(write_in_background=background_write) as datasaver:
+        meas.run(write_in_background=True) as datasaver:
 
         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         timer.reset_clock()
@@ -177,7 +176,7 @@ def do1d(
     qcnd._register_actions(meas, enter_actions, exit_actions)
 
     with qcnd._catch_keyboard_interrupts() as interrupted, \
-        meas.run(write_in_background=background_write) as datasaver:
+        meas.run(write_in_background=True) as datasaver:
 
         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         for set_point in xarray:
@@ -247,7 +246,9 @@ def do1d_repeat_oneway(
 
     param_setx.post_delay = 0.0
 
-    with qcnd._catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
+    with qcnd._catch_keyboard_interrupts() as interrupted, \
+        meas.run(write_in_background=True) as datasaver:
+
         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         for i in range(num_repeats):
             y = param_county.get()
@@ -324,7 +325,9 @@ def do1d_repeat_twoway(
 
     param_setx.post_delay = 0.0
 
-    with qcnd._catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
+    with qcnd._catch_keyboard_interrupts() as interrupted, \
+        meas.run(write_in_background=True) as datasaver:
+
         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         for i in range(num_repeats):
             y = param_county.get()
@@ -404,7 +407,9 @@ def do2d(
     param_setx.post_delay = 0.0
     param_sety.post_delay = 0.0
 
-    with qcnd._catch_keyboard_interrupts() as interrupted, meas.run() as datasaver:
+    with qcnd._catch_keyboard_interrupts() as interrupted, \
+        meas.run(write_in_background=True) as datasaver:
+        
         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         for set_pointy in yarray:
             param_sety.set(set_pointy)
