@@ -75,15 +75,17 @@ class AutoRangedSRSVoltage(Parameter):
         param_name = self._voltage_param.name
         param_label = getattr(self._voltage_param, "label", None)
         param_unit = getattr(self._voltage_param, "unit", None)
+        param_vals = getattr(self._voltage_param, "vals", None)
 
         super().__init__(
-            param_name+'_auto', label=param_label, unit=param_unit
+            param_name+'_auto', 
+            label=param_label, unit=param_unit, vals=param_vals,
         )
 
     def _increment_sens(self, current_sens, dir: str):
         # this was needed thanks to some inconsistencies in the
         # SR830 and SR86X drivers
-        
+
         n = self._to_n[current_sens]
         m = -1
 
