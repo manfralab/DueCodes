@@ -63,7 +63,11 @@ class AutoRangedSRSVoltage(Parameter):
     def __init__(self, complex_param, max_changes=1):
         
         self._complex_param = complex_param
+
         self._parent_lockin = self._complex_param.instrument
+        self._n_to = self._parent_lockin._N_TO_VOLT
+        self._to_n = self._parent_lockin._VOLT_TO_N
+
         self.max_changes = max_changes
         
         param_name = self._complex_param.name
@@ -76,31 +80,31 @@ class AutoRangedSRSVoltage(Parameter):
 
     def _increment_sens(self, current_sens, dir: str):
 
-        n_to = self._parent_lockin._N_TO_VOLT
-        to_n = self._parent_lockin._VOLT_TO_N
-
-        n = to_n[current_sens]
-        rel_sens = dict((k, v - current_sens) for k,v in n_to.items())
-        del rel_sens[n]
+        n = self._to_n[current_sens]
+        m = -1
 
         if dir=='up':
             smallest_rv = 2.0
-            for k, rv in rel_sens.items():
-                if (rv > 0.0) and (rv < smallest_rv):
-                    smallest_rv = rv
-                    m = k
+            for k, v in self._n_to.items():
+                if k!=n:
+                    rv = v - current_sens
+                    if (rv > 0.0) and (rv < smallest_rv):
+                        smallest_rv = rv
+                        m = k
         elif dir=='down':
             largest_rv = -2.0
-            for k, rv in rel_sens.items():
-                if (rv < 0.0) and (rv > largest_rv):
-                    largest_rv = rv
-                    m = k
+            for k, v in self._n_to.items():
+                if k!=n:
+                    rv = v - current_sens
+                    if (rv < 0.0) and (rv > largest_rv):
+                        largest_rv = rv
+                        m = k
 
-        if m > max(n_to.keys()) or m < min(n_to.keys()):
+        if m == -1:
             return None
         else:
-            self._parent_lockin.sensitivity.set(n_to[m])
-            return n_to[m]
+            self._parent_lockin.sensitivity.set(self._n_to[m])
+            return self._n_to[m]
         
     def get_raw(self):
 
@@ -125,5 +129,4 @@ class AutoRangedSRSVoltage(Parameter):
                 time.sleep(time_const)
                 val = self._complex_param.get()
 
-        else:
-            return val
+        return val
