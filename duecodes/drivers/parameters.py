@@ -69,6 +69,7 @@ class AutoRangedSRSVoltage(Parameter):
         self._parent_lockin = self._voltage_param.instrument
         self._n_to = self._parent_lockin._N_TO_VOLT
         self._to_n = self._parent_lockin._VOLT_TO_N
+        _ = self._parent_lockin.time_constant.get_latest() # make sure this is called once
 
         self.max_changes = max_changes
         
@@ -110,7 +111,7 @@ class AutoRangedSRSVoltage(Parameter):
         
     def get_raw(self):
 
-        time_const = self._parent_lockin.time_constant.get_latest()
+        time_const = self._parent_lockin.time_constant.cache._value # bad if you changed the front panel
         val = self._voltage_param.get()
         sens = self._parent_lockin.sensitivity.get()
 
