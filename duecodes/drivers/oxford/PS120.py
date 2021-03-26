@@ -410,7 +410,8 @@ class PS120(VisaInstrument):
         Args:
             sweeprate(float) : Sweep rate in Tesla/min.
         """
-        self._execute(f"T{100.0*sweeprate:.2f}")
+        self._execute(f"T{10.0*sweeprate:.2f}")
+        _ = self._read()
 
     def _get_persistent_current(self):
         """

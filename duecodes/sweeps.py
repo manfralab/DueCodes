@@ -88,14 +88,14 @@ def readvstime(
     meas = Measurement(exp=exp)
 
     timer = ElapsedTimeParameter("time")
-    
+
     all_setpoint_params = (timer,) + tuple(
         s for s in additional_setpoints)
 
     measured_parameters = list(param for param in param_meas
                                 if isinstance(param, _BaseParameter))
-    
-    
+
+
     if (len(measured_parameters)>2) or (use_threads==True):
         use_threads = True
     else:
@@ -104,7 +104,7 @@ def readvstime(
     qcnd._register_parameters(meas, all_setpoint_params)
     qcnd._register_parameters(meas, param_meas, setpoints=all_setpoint_params, shapes=None)
     qcnd._register_actions(meas, enter_actions, exit_actions)
-    
+
     with qcnd._catch_keyboard_interrupts() as interrupted, \
         meas.run(write_in_background=True) as datasaver:
 
@@ -112,7 +112,7 @@ def readvstime(
         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         timer.reset_clock()
         magnet.set_field(stop, block=False)
-        
+
         while True:
             time.sleep(delay)
             datasaver.add_result(
@@ -514,12 +514,12 @@ def do2d(
         dataset = datasaver.dataset
     return dataset
 
-### AMI MAGNET
+### AMI MAGNET ###
 
-def field_sweep(
+def field_sweep_ami(
     field_param,
-    start: float, 
-    stop: float, 
+    start: float,
+    stop: float,
     delay: float,
     *param_meas: qcnd.ParamMeasT,
     exp: Experiment = None,
@@ -540,7 +540,7 @@ def field_sweep(
     param_meas.append(field_param)
     measured_parameters = list(param for param in param_meas
                             if isinstance(param, _BaseParameter))
-    
+
     all_setpoint_params = (timer,) + tuple(
         s for s in additional_setpoints)
 
@@ -555,7 +555,7 @@ def field_sweep(
     qcnd._register_parameters(meas, all_setpoint_params)
     qcnd._register_parameters(meas, param_meas, setpoints=all_setpoint_params, shapes=None)
     qcnd._register_actions(meas, enter_actions, exit_actions)
-    
+
     with qcnd._catch_keyboard_interrupts() as interrupted, \
         meas.run(write_in_background=True) as datasaver:
 
@@ -563,8 +563,71 @@ def field_sweep(
         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         timer.reset_clock()
         magnet.set_field(stop, block=False)
-        
+
         while magnet.ramping_state() == 'ramping':
+            time.sleep(delay)
+            datasaver.add_result(
+                (timer, timer.get()),
+                *qcnd._process_params_meas(param_meas, use_threads=use_threads),
+                *additional_setpoints_data
+            )
+
+        dataset = datasaver.dataset
+
+    return dataset
+
+
+### PS120 MAGNET ###
+
+def field_sweep_ps120(
+    field_param,
+    start: float,
+    stop: float,
+    delay: float,
+    *param_meas: qcnd.ParamMeasT,
+    exp: Experiment = None,
+    use_threads=False,
+    enter_actions: qcnd.ActionsT = (),
+    exit_actions: qcnd.ActionsT = (),
+    additional_setpoints = tuple(),
+):
+
+    # get instrument for field param
+    magnet = field_param.instrument
+
+    # timer param
+    timer = ElapsedTimeParameter("time")
+
+    # add field to measured params
+    param_meas = list(param_meas)
+    param_meas.append(field_param)
+    measured_parameters = list(param for param in param_meas
+                            if isinstance(param, _BaseParameter))
+
+    all_setpoint_params = (timer,) + tuple(
+        s for s in additional_setpoints)
+
+    if (len(measured_parameters)>2) or (use_threads==True):
+        use_threads = True
+    elif (use_threads==False):
+        use_threads = False
+    else:
+        use_threads = False
+
+    meas = Measurement(exp=exp)
+    qcnd._register_parameters(meas, all_setpoint_params)
+    qcnd._register_parameters(meas, param_meas, setpoints=all_setpoint_params, shapes=None)
+    qcnd._register_actions(meas, enter_actions, exit_actions)
+
+    with qcnd._catch_keyboard_interrupts() as interrupted, \
+        meas.run(write_in_background=True) as datasaver:
+
+        magnet.field_blocking(start)
+        additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
+        timer.reset_clock()
+        magnet.field_non_blocking(stop)
+
+        while magnet.ramp_status() != magnet._GET_STATUS_RAMP[0]:
             time.sleep(delay)
             datasaver.add_result(
                 (timer, timer.get()),
