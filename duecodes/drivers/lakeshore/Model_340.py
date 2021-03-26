@@ -9,12 +9,12 @@ from qcodes.instrument.group_parameter import GroupParameter, Group
 import qcodes.utils.validators as vals
 
 
-# There are 16 sensors channels (a.k.a. measurement inputs) in Model 372
-_n_channels = 16
+# There are 4 sensors channels (a.k.a. measurement inputs) in Model 340
+_n_channels = 4
 
 
-class Output_372(BaseOutput):
-    """Class for control outputs (heaters) of model 372"""
+class Output_340(BaseOutput):
+    """Class for control outputs (heaters) of model 340"""
 
     MODES: ClassVar[Dict[str, int]] = {
         "off": 0,
@@ -92,7 +92,7 @@ class Output_372(BaseOutput):
         self.D.vals = vals.Numbers(0, 2500)
 
 
-class Model_372_Channel(BaseSensorChannel):
+class Model_340_Channel(BaseSensorChannel):
     SENSOR_STATUSES = {
         0: "OK",
         1: "CS OVL",
@@ -275,9 +275,9 @@ class Model_372_Channel(BaseSensorChannel):
         )
 
 
-class Model_372(LakeshoreBase):
+class Model_340(LakeshoreBase):
     """
-    Lakeshore Model 372 Temperature Controller Driver
+    Lakeshore Model 340 Temperature Controller Driver
     Note that interaction with the control input (referred to as 'A' in the
     Computer Interface Operation section of the manual) is not implemented.
     """
@@ -289,11 +289,11 @@ class Model_372(LakeshoreBase):
         i: f"ch{i:02}" for i in range(1, 1 + _n_channels)
     }
 
-    CHANNEL_CLASS = Model_372_Channel
+    CHANNEL_CLASS = Model_340_Channel
 
     def __init__(self, name: str, address: str, **kwargs) -> None:
         super().__init__(name, address, **kwargs)
 
         heaters = {"sample_heater": 0, "warmup_heater": 1, "analog_heater": 2}
         for heater_name, heater_index in heaters.items():
-            self.add_submodule(heater_name, Output_372(self, heater_name, heater_index))
+            self.add_submodule(heater_name, Output_340(self, heater_name, heater_index))

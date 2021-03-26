@@ -409,11 +409,11 @@ def do2d(
 
     with qcnd._catch_keyboard_interrupts() as interrupted, \
         meas.run(write_in_background=True) as datasaver:
-        
+
         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         for set_pointy in yarray:
-            param_sety.set(set_pointy)
             param_setx.set(xarray[0])
+            param_sety.set(set_pointy)
             time.sleep(delayy)
             for action in before_inner_actions:
                 action()
