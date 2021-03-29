@@ -122,6 +122,54 @@ class Model_340_Channel(InstrumentChannel):
         128: 'Sensor Units Overrange'
     }
 
+    SENSOR_TYPES = {
+        'Special': 0,
+        'Silicon Dioxide': 1,
+        'GaAlAs Diode': 2,
+        'Platinum 100 (250Ohm)': 3,
+        'Platinum 100 (500Ohm)': 4,
+        'Platinum 1000': 5,
+        'Rhodium Iron': 6,
+        'Carbon-Glass': 7,
+        'Cernox': 8,
+        'RuOx': 9,
+        'Germanium': 10,
+        'Capacitor': 11,
+        'Thermocouple': 12,
+    }
+
+    EXCITATIONS = {
+        'off': 0,
+        '30nA': 1,
+        '100nA': 2,
+        '300nA': 3,
+        '1uA': 4,
+        '3uA': 5,
+        '10uA': 6,
+        '30uA': 7,
+        '100uA': 8,
+        '300uA': 9,
+        '1mA': 10,
+        '3mA': 11,
+        '4mA': 12,
+    }
+
+    RANGES = {
+        '1mV': 1,
+        '2.5mV': 2,
+        '5mV': 3,
+        '10mV': 4,
+        '25mV': 5,
+        '50mV': 6,
+        '100mV': 7,
+        '250mV': 8,
+        '500mV': 9,
+        '1V': 10,
+        '2.5V': 11,
+        '5V': 12,
+        '7.5V': 13,
+    }
+
     def __init__(
         self,
         parent: "Model_340",
@@ -149,7 +197,74 @@ class Model_340_Channel(InstrumentChannel):
                    get_parser=self._decode_sensor_status,
                    label='Sensor status')
 
-    def _decode_sensor_status(self, sum_of_codes: str) -> str:
+        self.add_parameter('enabled',
+                           label='Enabled',
+                           docstring='Specifies whether the input/channel is '
+                                     'enabled or disabled. At least one '
+                                     'measurement input channel must be '
+                                     'enabled. If all are configured to '
+                                     'disabled, channel 1 will change to '
+                                     'enabled.',
+                           val_mapping={True: 1, False: 0},
+                           parameter_class=GroupParameter)
+        self.add_parameter('compensation',
+                           label='Dwell',
+                           docstring='Specifies a value for the autoscanning '
+                                     'dwell time.',
+                           unit='s',
+                           val_mapping={'off':0, 'on':1, 'pause':2},
+                           parameter_class=GroupParameter)
+
+        self.output_group = Group([self.enabled, self.compensation],
+                                  set_cmd=f'INSET {self._channel}, '
+                                          f'{{enabled}}, {{compensation}}',
+                                  get_cmd=f'INSET? {self._channel}')
+
+        # Parameters related to Input Setup Command (INTYPE)
+        self.add_parameter('sensor_type',
+                           label='Type of sensor connected',
+                           docstring='Specifies the type of sensor',
+                           get_parser=int,
+                           val_mapping=self.SENSOR_TYPES,
+                           parameter_class=GroupParameter)
+        self.add_parameter('units',
+                           label='Preferred units',
+                           docstring='Specifies the preferred units parameter '
+                                     'for sensor readings and for the control '
+                                     'setpoint (kelvin or ohms)',
+                           val_mapping={'volts': 1, 'ohms': 2},
+                           parameter_class=GroupParameter)
+        self.add_parameter('temperature_coefficient',
+                          label='Temperature coefficient',
+                          docstring='Sets the temperature coefficient that '
+                                    'will be used for temperature control if '
+                                    'no curve is selected (negative or '
+                                    'positive). Do not change this parameter '
+                                    'unless you know what you are doing.',
+                          val_mapping={'negative': 1, 'positive': 2},
+                          parameter_class=GroupParameter)
+        self.add_parameter('excitation',
+                          label='Current excitation range',
+                          docstring='Specifies excitation range',
+                          get_parser=int,
+                          val_mapping=self.EXCITATIONS,
+                          parameter_class=GroupParameter)
+        self.add_parameter('range',
+                           label='Range',
+                           val_mapping=self.RANGES,
+                           parameter_class=GroupParameter)
+
+        self.output_group = Group([self.sensor_type, self.units,
+                                   self.temperature_coefficient,
+                                   self.excitation, self.range],
+                                  set_cmd=f'INTYPE {self._channel}, '
+                                          f'{{sensor_type}}, {{units}}, '
+                                          f'{{temperature_coefficient}}, '
+                                          f'{{excitation}}, {{range}}',
+                                  get_cmd=f'INTYPE? {self._channel}')
+
+
+    def _decode_sensor_status(self, status: str) -> str:
         """
         Parses the sum of status code according to the `SENSOR_STATUSES` using
         an algorithm defined in `_get_sum_terms` method.
@@ -159,9 +274,8 @@ class Model_340_Channel(InstrumentChannel):
                 string (e.g. "32"), as returned by the corresponding
                 instrument command
         """
-        codes = self._get_sum_terms(list(self.SENSOR_STATUSES.keys()),
-                                    int(sum_of_codes))
-        return ", ".join([self.SENSOR_STATUSES[k] for k in codes])
+        k = int(status)
+        return self.SENSOR_STATUSES[k]
 
 class Model_340(VisaInstrument):
     """
