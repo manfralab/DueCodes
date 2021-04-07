@@ -1,7 +1,7 @@
 from qcodes import VisaInstrument
 from qcodes import validators as vals
 import time
-import visa
+import pyvisa as visa
 
 
 class PS120(VisaInstrument):
@@ -238,7 +238,6 @@ class PS120(VisaInstrument):
 
     def close(self):
         """Safely close connection"""
-        self.local()
         super().close()
 
     def get_idn(self):
@@ -391,10 +390,8 @@ class PS120(VisaInstrument):
         Args:
             field (float) : target field in Tesla
         """
-        self.remote()
-        self._execute(f"J{100.0*field}")
-        self.local()
-        self.current_setpoint()
+        cmd = f"J{10.0*field:.2f}"
+        self._execute(cmd)
 
     def _get_sweeprate_field(self):
         """
@@ -413,10 +410,8 @@ class PS120(VisaInstrument):
         Args:
             sweeprate(float) : Sweep rate in Tesla/min.
         """
-        self.remote()
-        self._execute(f"T{100.0*sweeprate}")
-        self.local()
-        self.sweeprate_current()
+        self._execute(f"T{10.0*sweeprate:.2f}")
+        _ = self._read()
 
     def _get_persistent_current(self):
         """
@@ -458,9 +453,7 @@ class PS120(VisaInstrument):
             mode (int): See _SET_ACTIVITY for values and meanings.
         """
         if mode in self._SET_ACTIVITY.keys():
-            self.remote()
             self._execute("A%s" % mode)
-            self.local()
         else:
             print("Invalid mode inserted.")
 
@@ -498,10 +491,8 @@ class PS120(VisaInstrument):
             1 : On
         """
         message_lookup = {"on": "H1", "off": "H0"}
-        self.remote()
         self._execute(message_lookup[mode])
         print("Setting switch heater... (wait 20s)")
-        self.local()
         time.sleep(20)
 
     def run_to_field_non_blocking(self, field_value):
@@ -512,8 +503,8 @@ class PS120(VisaInstrument):
             field_value (float): the magnetic field value to go to in Tesla
         """
 
-        if self.switch_heater() == self._GET_STATUS_SWITCH_HEATER[1]:
-            self.hold()
+        sw_state = self.switch_heater()
+        if sw_state == self._GET_STATUS_SWITCH_HEATER[1]:
             self.field_setpoint(field_value)
             self.to_setpoint()
         else:
@@ -526,10 +517,10 @@ class PS120(VisaInstrument):
         Args:
             field_value (float): the magnetic field value to go to in Tesla
         """
-        if self.switch_heater() == self._GET_STATUS_SWITCH_HEATER[1]:
-            self.hold()
+
+        sw_state = self.switch_heater()
+        if sw_state == self._GET_STATUS_SWITCH_HEATER[1]:
             self.field_setpoint(field_value)
-            self.remote()
             self.to_setpoint()
             magnet_mode = self.ramp_status()
             while magnet_mode != self._GET_STATUS_RAMP[0]:
@@ -537,7 +528,6 @@ class PS120(VisaInstrument):
                 time.sleep(0.1)
         else:
             print("Switch heater is off, cannot change the field.")
-        self.local()
 
     def _get_control_mode(self):
         """
@@ -566,8 +556,6 @@ class PS120(VisaInstrument):
             mode values and meanings.
         """
         if mode in self._GET_STATUS_CONTROL.keys():
-            self.remote()
             self._execute(f"M{mode}")
-            self.local()
         else:
             print("Invalid mode inserted.")
