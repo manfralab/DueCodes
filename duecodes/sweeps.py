@@ -7,6 +7,7 @@ from typing import (Callable, Iterator, List, Optional,
                     Sequence, Tuple, Union, Dict)
 from warnings import warn
 import numpy as np
+import pandas as pd
 from qcodes.dataset.measurements import Measurement
 from qcodes.dataset.experiment_container import Experiment
 from qcodes.utils.dataset import doNd as qcnd
@@ -110,10 +111,6 @@ def readvstime(
 
         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
         timer.reset_clock()
-<<<<<<< HEAD
-=======
-        magnet.set_field(stop, block=False)
->>>>>>> de6ed3423972d0aa48d70d71522aa4f94c9b0447
 
         while True:
             time.sleep(delay)
@@ -516,126 +513,126 @@ def do2d(
         dataset = datasaver.dataset
     return dataset
 
-def do2d_two_inner(
-    param_setx_1, xarray_1, delayx_1,
-    param_setx_2, xarray_2, delayx_2,
-    param_sety, yarray, delayy,
-    param_meas_1: Sequence[qcnd.ParamMeasT],
-    param_meas_2: Sequence[qcnd.ParamMeasT],
-    enter_actions: qcnd.ActionsT = (),
-    exit_actions: qcnd.ActionsT = (),
-    before_inner_actions: qcnd.ActionsT = (),
-    after_inner_actions: qcnd.ActionsT = (),
-    exp: Optional[Experiment] = None,
-    use_threads: Optional[bool] = None,
-    additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
-):
-
-    meas_1 = Measurement(exp=exp)
-    meas_2 = Measurement(exp=exp)
-
-    all_setpoint_params_1 = (param_sety, param_setx_1,) + tuple(
-            s for s in additional_setpoints)
-    all_setpoint_params_2 = (param_sety, param_setx_2,) + tuple(
-            s for s in additional_setpoints)
-
-    measured_parameters_1 = tuple(param for param in param_meas_1
-                                  if isinstance(param, _BaseParameter))
-    measured_parameters_2 = tuple(param for param in param_meas_2
-                                  if isinstance(param, _BaseParameter))
-
-    if (len(measured_parameters_1)>2) or (len(measured_parameters_2)>2) or (use_threads==True):
-        use_threads = True
-    elif (use_threads==False):
-        use_threads = False
-    else:
-        use_threads = False
-
-    try:
-        loop_shape_1 = tuple(
-            1 for _ in additional_setpoints
-        ) + (len(yarray), len(xarray_1))
-        shapes_1: Shapes = detect_shape_of_measurement(
-            measured_parameters_1,
-            loop_shape_1
-        )
-    except TypeError:
-        warn(
-            f"Could not detect shape of {measured_parameters} "
-            f"falling back to unknown shape.")
-        shapes = None
-
-    try:
-        loop_shape_2 = tuple(
-            1 for _ in additional_setpoints
-        ) + (len(yarray), len(xarray_2))
-        shapes_2: Shapes = detect_shape_of_measurement(
-            measured_parameters_2,
-            loop_shape_2
-        )
-    except TypeError:
-        warn(
-            f"Could not detect shape of {measured_parameters} "
-            f"falling back to unknown shape.")
-        shapes = None
-
-
-    qcnd._register_parameters(meas_1, all_setpoint_params_1)
-    qcnd._register_parameters(meas_1, param_meas_1, setpoints=all_setpoint_params_1,
-                         shapes=shapes_1)
-    qcnd._register_actions(meas_1, enter_actions, exit_actions)
-
-    qcnd._register_parameters(meas_2, all_setpoint_params_2)
-    qcnd._register_parameters(meas_2, param_meas_2, setpoints=all_setpoint_params_2,
-                         shapes=shapes_2)
-
-    param_setx_1.post_delay = 0.0
-    param_setx_2.post_delay = 0.0
-    param_sety.post_delay = 0.0
-
-    with qcnd._catch_keyboard_interrupts() as interrupted, \
-        meas_1.run(write_in_background=True) as datasaver_1, \
-        meas_2.run(write_in_background=True) as datasaver_2:
-
-        additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
-        for set_pointy in yarray:
-            for action in before_inner_actions:
-                action()
-                
-            param_setx_1.set(xarray_1[0])
-            param_setx_2.set(xarray_2[0])
-            param_sety.set(set_pointy)
-            time.sleep(delayy)
-
-            for set_pointx in xarray_1:
-                param_setx_1.set(set_pointx)
-                time.sleep(delayx_1)
-
-                datasaver_1.add_result((param_sety, set_pointy),
-                                     (param_setx_1, set_pointx),
-                                     *qcnd._process_params_meas(param_meas_1, use_threads=use_threads),
-                                     *additional_setpoints_data)
-
-            param_setx_1.set(xarray_1[0])
-            param_setx_2.set(xarray_2[0])
-            param_sety.set(set_pointy)
-            time.sleep(delayy)
-            for set_pointx in xarray_2:
-                param_setx_2.set(set_pointx)
-                time.sleep(delayx_2)
-
-                datasaver_2.add_result((param_sety, set_pointy),
-                                     (param_setx_2, set_pointx),
-                                     *qcnd._process_params_meas(param_meas_2, use_threads=use_threads),
-                                     *additional_setpoints_data)
-
-
-            for action in after_inner_actions:
-                action()
-
-        dataset_1 = datasaver_1.dataset
-        dataset_2 = datasaver_2.dataset
-    return dataset_1, dataset_2
+# def do2d_two_inner(
+#     param_setx_1, xarray_1, delayx_1,
+#     param_setx_2, xarray_2, delayx_2,
+#     param_sety, yarray, delayy,
+#     param_meas_1: Sequence[qcnd.ParamMeasT],
+#     param_meas_2: Sequence[qcnd.ParamMeasT],
+#     enter_actions: qcnd.ActionsT = (),
+#     exit_actions: qcnd.ActionsT = (),
+#     before_inner_actions: qcnd.ActionsT = (),
+#     after_inner_actions: qcnd.ActionsT = (),
+#     exp: Optional[Experiment] = None,
+#     use_threads: Optional[bool] = None,
+#     additional_setpoints: Sequence[qcnd.ParamMeasT] = tuple(),
+# ):
+#
+#     meas_1 = Measurement(exp=exp)
+#     meas_2 = Measurement(exp=exp)
+#
+#     all_setpoint_params_1 = (param_sety, param_setx_1,) + tuple(
+#             s for s in additional_setpoints)
+#     all_setpoint_params_2 = (param_sety, param_setx_2,) + tuple(
+#             s for s in additional_setpoints)
+#
+#     measured_parameters_1 = tuple(param for param in param_meas_1
+#                                   if isinstance(param, _BaseParameter))
+#     measured_parameters_2 = tuple(param for param in param_meas_2
+#                                   if isinstance(param, _BaseParameter))
+#
+#     if (len(measured_parameters_1)>2) or (len(measured_parameters_2)>2) or (use_threads==True):
+#         use_threads = True
+#     elif (use_threads==False):
+#         use_threads = False
+#     else:
+#         use_threads = False
+#
+#     try:
+#         loop_shape_1 = tuple(
+#             1 for _ in additional_setpoints
+#         ) + (len(yarray), len(xarray_1))
+#         shapes_1: Shapes = detect_shape_of_measurement(
+#             measured_parameters_1,
+#             loop_shape_1
+#         )
+#     except TypeError:
+#         warn(
+#             f"Could not detect shape of {measured_parameters} "
+#             f"falling back to unknown shape.")
+#         shapes = None
+#
+#     try:
+#         loop_shape_2 = tuple(
+#             1 for _ in additional_setpoints
+#         ) + (len(yarray), len(xarray_2))
+#         shapes_2: Shapes = detect_shape_of_measurement(
+#             measured_parameters_2,
+#             loop_shape_2
+#         )
+#     except TypeError:
+#         warn(
+#             f"Could not detect shape of {measured_parameters} "
+#             f"falling back to unknown shape.")
+#         shapes = None
+#
+#
+#     qcnd._register_parameters(meas_1, all_setpoint_params_1)
+#     qcnd._register_parameters(meas_1, param_meas_1, setpoints=all_setpoint_params_1,
+#                          shapes=shapes_1)
+#     qcnd._register_actions(meas_1, enter_actions, exit_actions)
+#
+#     qcnd._register_parameters(meas_2, all_setpoint_params_2)
+#     qcnd._register_parameters(meas_2, param_meas_2, setpoints=all_setpoint_params_2,
+#                          shapes=shapes_2)
+#
+#     param_setx_1.post_delay = 0.0
+#     param_setx_2.post_delay = 0.0
+#     param_sety.post_delay = 0.0
+#
+#     with qcnd._catch_keyboard_interrupts() as interrupted, \
+#         meas_1.run(write_in_background=True) as datasaver_1, \
+#         meas_2.run(write_in_background=True) as datasaver_2:
+#
+#         additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
+#         for set_pointy in yarray:
+#             for action in before_inner_actions:
+#                 action()
+#
+#             param_setx_1.set(xarray_1[0])
+#             param_setx_2.set(xarray_2[0])
+#             param_sety.set(set_pointy)
+#             time.sleep(delayy)
+#
+#             for set_pointx in xarray_1:
+#                 param_setx_1.set(set_pointx)
+#                 time.sleep(delayx_1)
+#
+#                 datasaver_1.add_result((param_sety, set_pointy),
+#                                      (param_setx_1, set_pointx),
+#                                      *qcnd._process_params_meas(param_meas_1, use_threads=use_threads),
+#                                      *additional_setpoints_data)
+#
+#             param_setx_1.set(xarray_1[0])
+#             param_setx_2.set(xarray_2[0])
+#             param_sety.set(set_pointy)
+#             time.sleep(delayy)
+#             for set_pointx in xarray_2:
+#                 param_setx_2.set(set_pointx)
+#                 time.sleep(delayx_2)
+#
+#                 datasaver_2.add_result((param_sety, set_pointy),
+#                                      (param_setx_2, set_pointx),
+#                                      *qcnd._process_params_meas(param_meas_2, use_threads=use_threads),
+#                                      *additional_setpoints_data)
+#
+#
+#             for action in after_inner_actions:
+#                 action()
+#
+#         dataset_1 = datasaver_1.dataset
+#         dataset_2 = datasaver_2.dataset
+#     return dataset_1, dataset_2
 
 ### AMI MAGNET
 
@@ -693,6 +690,108 @@ def field_sweep_ami(
                 (timer, timer.get()),
                 *qcnd._process_params_meas(param_meas, use_threads=use_threads),
                 *additional_setpoints_data
+            )
+
+        dataset = datasaver.dataset
+
+    return dataset
+
+def _bin_results_to_fit_shape(param_setx, xrow, all_params, results_dict):
+    # results_dict contacts param_name: [list of values]
+    # for all parameters measured during inner loop
+    # inner lists contain all results at a given time
+    # param_setx will be used as the set point
+    # xarray will be used to bin results according to setpoint values
+    # returns data
+
+    dxs = np.diff(xrow)/2
+    bins = np.concatenate((np.array([xrow[0] - dxs[0]]),
+                              xrow[:-1] + dxs,
+                              np.array([xrow[-1] + dxs[-1]])))
+
+    df = pd.DataFrame(results_dict)
+    df = df.groupby(pd.cut(df[param_setx.name], bins)).mean(0)
+    df = df.set_index(param_setx.name)
+
+    output = [(param_setx, xrow)]
+    for col in df.columns:
+        col_param = next(p for p in all_params if p.name==col)
+        output.append((col_param, df[col].values))
+
+    return output
+
+def field_sweep_ami_2d(
+    field_param, xarray, delayx,
+    param_sety, yarray, delayy,
+    *param_meas: qcnd.ParamMeasT,
+    exp: Experiment = None,
+    use_threads=False,
+    enter_actions: qcnd.ActionsT = (),
+    exit_actions: qcnd.ActionsT = (),
+    additional_setpoints = tuple(),
+):
+
+    # get instrument for field param
+    magnet = field_param.instrument
+
+    # add field to measured params
+    all_setpoint_params = (param_sety, field_param,) + tuple(
+            s for s in additional_setpoints)
+
+    measured_parameters = tuple(param for param in param_meas
+                                if isinstance(param, _BaseParameter))
+
+    if (len(measured_parameters)>2) or (use_threads==True):
+        use_threads = True
+    elif (use_threads==False):
+        use_threads = False
+    else:
+        use_threads = False
+
+    try:
+        loop_shape = tuple(
+            1 for _ in additional_setpoints
+        ) + (len(yarray), len(xarray))
+        shapes: Shapes = detect_shape_of_measurement(
+            measured_parameters,
+            loop_shape
+        )
+    except TypeError:
+        warn(
+            f"Could not detect shape of {measured_parameters} "
+            f"falling back to unknown shape.")
+        shapes = None
+
+    meas = Measurement(exp=exp)
+    qcnd._register_parameters(meas, all_setpoint_params)
+    qcnd._register_parameters(meas, param_meas, setpoints=all_setpoint_params, shapes=None)
+    qcnd._register_actions(meas, enter_actions, exit_actions)
+
+    inner_loop_params = (field_param,) + param_meas
+    inner_loop_dict = {k.name: [] for k in inner_loop_params}
+
+    with qcnd._catch_keyboard_interrupts() as interrupted, \
+        meas.run(write_in_background=True) as datasaver:
+
+        additional_setpoints_data = qcnd._process_params_meas(additional_setpoints)
+
+        for set_pointy in yarray:
+            param_sety.set(set_pointy)
+            time.sleep(delayy)
+
+            magnet.set_field(xarray[0], block=True)
+            magnet.set_field(xarray[-1], block=False)
+
+            while magnet.ramping_state() == 'ramping':
+                time.sleep(delayx)
+
+                for param, val in qcnd._process_params_meas(inner_loop_params, use_threads=use_threads):
+                    inner_loop_dict[param.name].append(val)
+
+            datasaver.add_result(
+                (param_sety, [set_pointy]*len(xarray)),
+                *_bin_results_to_fit_shape(field_param, xarray, inner_loop_params, inner_loop_dict),
+                *additional_setpoints_data,
             )
 
         dataset = datasaver.dataset

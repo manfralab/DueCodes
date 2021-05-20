@@ -8,3 +8,8 @@ def add_plot_text(axis, text, loc="best"):
     anchored_text.patch.set(edgecolor='0.8')
     axis.add_artist(anchored_text)
     return anchored_text
+
+def legend_without_duplicate_labels(ax, loc='best'):
+    handles, labels = ax.get_legend_handles_labels()
+    unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+    ax.legend(*zip(*unique), loc=loc)

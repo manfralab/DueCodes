@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame
 from xarray import Dataset
-from qcodes.dataset.data_set import load_by_run_spec
+from qcodes.dataset.data_set import load_by_run_spec, load_by_guid
 from qcodes.dataset.data_set import DataSet
 from qcodes.dataset.guids import validate_guid_format
 

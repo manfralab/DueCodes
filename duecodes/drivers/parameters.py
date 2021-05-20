@@ -61,9 +61,9 @@ class CurrentParam1211(Parameter):
 class AutoRangedSRSVoltage(Parameter):
 
     # should work with X, Y or complex parameters from SR830 or SR860 lock ins
-    
-    def __init__(self, voltage_param, max_changes=1):
-        
+
+    def __init__(self, name, voltage_param, max_changes=1):
+
         self._voltage_param = voltage_param
 
         self._parent_lockin = self._voltage_param.instrument
@@ -71,15 +71,13 @@ class AutoRangedSRSVoltage(Parameter):
         self._to_n = self._parent_lockin._VOLT_TO_N
 
         self.max_changes = max_changes
-        
-        param_name = self._voltage_param.name
+
         param_label = getattr(self._voltage_param, "label", None)
         param_unit = getattr(self._voltage_param, "unit", None)
         param_vals = getattr(self._voltage_param, "vals", None)
 
         super().__init__(
-            param_name+'_auto', 
-            label=param_label, unit=param_unit, vals=param_vals,
+            name, label=param_label, unit=param_unit, vals=param_vals,
         )
 
     def _increment_sens(self, current_sens, dir: str):
@@ -111,10 +109,10 @@ class AutoRangedSRSVoltage(Parameter):
         else:
             self._parent_lockin.sensitivity.set(self._n_to[m])
             return self._n_to[m]
-        
+
     def _time_constant_wait(self):
         # wait for one time constant
-        # substract the time it took to get the time constant 
+        # substract the time it took to get the time constant
         # to avoid waiting longer than necessary
         tstart = time.time()
         time_constant = self._parent_lockin.time_constant.get()
@@ -127,7 +125,7 @@ class AutoRangedSRSVoltage(Parameter):
         sens = self._parent_lockin.sensitivity.get()
 
         for i in range(self.max_changes):
-            
+
             if abs(val) > 0.8 * sens:
                 # range is too small
                 sens = self._increment_sens(sens, 'up')
@@ -142,7 +140,7 @@ class AutoRangedSRSVoltage(Parameter):
                 # hit range limit
                 break
             else:
-                self._time_constant_wait()                
+                self._time_constant_wait()
                 val = self._voltage_param.get()
 
         return val
